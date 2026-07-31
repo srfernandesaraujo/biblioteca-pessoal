@@ -1,9 +1,10 @@
 /**
- * Google Drive Direct Link & Streaming Service.
+ * Google Drive Direct Link, Picker & Streaming Service.
  * Allows selecting files directly from Google Drive, performing OCR, and viewing PDFs multi-device.
  */
 
 const DRIVE_FOLDER_KEY = 'biblioteca_google_drive_folder_id';
+const DRIVE_API_KEY_STORAGE = 'biblioteca_google_drive_api_key';
 
 export function getStoredDriveFolderId() {
   return localStorage.getItem(DRIVE_FOLDER_KEY) || '';
@@ -18,6 +19,19 @@ export function saveDriveFolderId(folderId) {
   }
 }
 
+export function getStoredDriveApiKey() {
+  return localStorage.getItem(DRIVE_API_KEY_STORAGE) || '';
+}
+
+export function saveDriveApiKey(apiKey) {
+  const trimmed = (apiKey || '').trim();
+  if (trimmed) {
+    localStorage.setItem(DRIVE_API_KEY_STORAGE, trimmed);
+  } else {
+    localStorage.removeItem(DRIVE_API_KEY_STORAGE);
+  }
+}
+
 export function extractFolderId(urlOrId) {
   if (!urlOrId) return '';
   const match = urlOrId.match(/folders\/([a-zA-Z0-9_-]+)/);
@@ -27,7 +41,6 @@ export function extractFolderId(urlOrId) {
 
 /**
  * Extracts a Google Drive File ID from a full shareable link or raw ID string.
- * Supports file/d/, open?id=, document/d/, etc.
  */
 export function extractDriveFileId(urlOrId) {
   if (!urlOrId) return '';
@@ -86,10 +99,60 @@ export function getDriveDirectDownloadUrl(fileId) {
 
 /**
  * Safe link opener for Google Drive Web.
- * Opens Google Drive web in a new window for the user to copy their file link.
  */
 export function openGoogleDriveWeb() {
   window.open('https://drive.google.com/drive/my-drive', '_blank');
+}
+
+/**
+ * Opens Google Drive Web Picker modal using Developer API Key.
+ * @param {object} params - { apiKey, onFilePicked, onError }
+ */
+export function openGoogleDrivePicker({ apiKey, onFilePicked, onError }) {
+  if (typeof window === 'undefined') return;
+
+  const keyToUse = apiKey || getStoredDriveApiKey();
+  if (!keyToUse) {
+    if (onError) onError('API Key do Google Drive não configurada.');
+    return;
+  }
+
+  if (!window.gapi) {
+    if (onError) onError('Biblioteca gapi do Google não foi carregada.');
+    return;
+  }
+
+  window.gapi.load('picker', {
+    callback: () => {
+      try {
+        const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
+        view.setMimeTypes('application/pdf,image/png,image/jpeg,image/jpg');
+
+        const builder = new window.google.picker.PickerBuilder()
+          .addView(view)
+          .setDeveloperKey(keyToUse)
+          .setCallback((data) => {
+            if (data.action === window.google.picker.Action.PICKED) {
+              const doc = data.docs[0];
+              if (doc) {
+                onFilePicked({
+                  id: doc.id,
+                  name: doc.name,
+                  url: doc.url || `https://drive.google.com/file/d/${doc.id}/view`,
+                  iconUrl: doc.iconUrl
+                });
+              }
+            }
+          });
+
+        const picker = builder.build();
+        picker.setVisible(true);
+      } catch (err) {
+        console.error('Erro ao abrir Google Picker:', err);
+        if (onError) onError(err.message || 'Erro ao inicializar o Google Drive Picker.');
+      }
+    }
+  });
 }
 
 /**
