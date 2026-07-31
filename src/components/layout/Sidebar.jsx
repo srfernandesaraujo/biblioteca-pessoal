@@ -14,7 +14,8 @@ import {
   Database,
   BarChart3,
   Bot,
-  Sparkles
+  Sparkles,
+  Cloud
 } from 'lucide-react';
 
 export function Sidebar({ 
@@ -31,7 +32,8 @@ export function Sidebar({
   onOpenUploadDoc,
   onOpenUploadBook,
   onOpenCategoryManager,
-  onOpenBackup
+  onOpenBackup,
+  onOpenDriveSync
 }) {
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 min-h-screen flex flex-col flex-shrink-0 border-r border-slate-800 select-none">
@@ -108,7 +110,7 @@ export function Sidebar({
         >
           <div className="flex items-center gap-2.5">
             <BookOpen className="w-4 h-4" />
-            <span>Livros (Calibre)</span>
+            <span>Estante de Livros</span>
           </div>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             activeTab === 'books' ? 'bg-teal-700 text-teal-100' : 'bg-slate-800 text-slate-400'
@@ -118,55 +120,43 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Action Buttons */}
-      <div className="p-3">
-        {activeTab === 'documents' ? (
-          <button
-            onClick={onOpenUploadDoc}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-all shadow-md shadow-emerald-900/20 active:scale-98"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Novo Documento + OCR</span>
-          </button>
-        ) : (
-          <button
-            onClick={onOpenUploadBook}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium text-sm transition-all shadow-md shadow-teal-900/20 active:scale-98"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Adicionar Livro PDF</span>
-          </button>
-        )}
+      {/* Quick Action Upload Buttons */}
+      <div className="p-3 border-b border-slate-800 space-y-2">
+        <button
+          onClick={onOpenUploadDoc}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-semibold text-xs transition-colors border border-emerald-500/30"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Cadastrar Documento</span>
+        </button>
+
+        <button
+          onClick={onOpenUploadBook}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 font-semibold text-xs transition-colors border border-teal-500/30"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Cadastrar Livro PDF</span>
+        </button>
       </div>
 
-      {/* Navigation Filter Groups */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-6 text-sm">
+      {/* Dynamic Filters Section */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {/* Categories Section */}
         <div>
           <div className="flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-            <span>Categorias ({activeTab === 'documents' ? 'Docs' : 'Livros'})</span>
-            <button 
+            <span>{activeTab === 'books' ? 'Gêneros' : 'Categorias'}</span>
+            <button
               onClick={onOpenCategoryManager}
-              title="Gerenciar Categorias" 
-              className="hover:text-emerald-400 transition-colors"
+              className="hover:text-emerald-400 transition-colors p-1"
+              title="Gerenciar Categorias & Regras"
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="space-y-0.5">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                selectedCategory === null ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5 text-slate-400" />
-              <span>Todas as Categorias</span>
-            </button>
-
             {categories
-              .filter(cat => cat.type === (activeTab === 'documents' ? 'document' : 'book'))
+              .filter(cat => activeTab === 'books' ? cat.type === 'book' : cat.type === 'document')
               .map(cat => (
                 <button
                   key={cat.id}
@@ -214,18 +204,23 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Footer Info & Backup Button */}
-      <div className="p-3 border-t border-slate-800 space-y-2">
+      {/* Footer Info & Multi-Device Sync Buttons */}
+      <div className="p-3 border-t border-slate-800 space-y-1.5">
+        <button
+          onClick={onOpenDriveSync}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 font-semibold text-xs transition-colors border border-blue-700/60"
+        >
+          <Cloud className="w-3.5 h-3.5 text-blue-400" />
+          <span>Sincronizar Google Drive ☁️</span>
+        </button>
+
         <button
           onClick={onOpenBackup}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs transition-colors border border-slate-700/80"
+          className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition-colors border border-slate-700/80"
         >
-          <Database className="w-3.5 h-3.5 text-blue-400" />
-          <span>Backup & Restauração</span>
+          <Database className="w-3.5 h-3.5 text-slate-400" />
+          <span>Backup Local</span>
         </button>
-        <p className="text-[11px] text-slate-500 text-center">
-          Armazenamento Local Persistente
-        </p>
       </div>
     </aside>
   );

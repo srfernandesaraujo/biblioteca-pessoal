@@ -13,6 +13,7 @@ import { PdfViewerModal } from './components/viewer/PdfViewerModal';
 import { OcrViewerModal } from './components/viewer/OcrViewerModal';
 import { CategoryManagerModal } from './components/categories/CategoryManagerModal';
 import { BackupModal } from './components/backup/BackupModal';
+import { GoogleDriveSyncModal } from './components/drive/GoogleDriveSyncModal';
 import { AnalyticsDashboard } from './components/dashboard/AnalyticsDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { AdminDashboardModal } from './components/admin/AdminDashboardModal';
@@ -36,6 +37,7 @@ export default function App() {
   const [isUploadBookOpen, setIsUploadBookOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
+  const [isDriveSyncOpen, setIsDriveSyncOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [viewingPdf, setViewingPdf] = useState(null); // { item, type: 'document' | 'book' }
   const [viewingOcrDoc, setViewingOcrDoc] = useState(null);
@@ -174,6 +176,7 @@ export default function App() {
         onOpenUploadBook={() => setIsUploadBookOpen(true)}
         onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
         onOpenBackup={() => setIsBackupOpen(true)}
+        onOpenDriveSync={() => setIsDriveSyncOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -318,6 +321,12 @@ export default function App() {
       <BackupModal
         isOpen={isBackupOpen}
         onClose={() => setIsBackupOpen(false)}
+      />
+
+      <GoogleDriveSyncModal
+        isOpen={isDriveSyncOpen}
+        onClose={() => setIsDriveSyncOpen(false)}
+        currentUser={currentUser}
       />
 
       <AdminDashboardModal
