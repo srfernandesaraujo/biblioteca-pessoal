@@ -14,9 +14,14 @@ import { OcrViewerModal } from './components/viewer/OcrViewerModal';
 import { CategoryManagerModal } from './components/categories/CategoryManagerModal';
 import { BackupModal } from './components/backup/BackupModal';
 import { AnalyticsDashboard } from './components/dashboard/AnalyticsDashboard';
+import { LandingPage } from './components/landing/LandingPage';
+import { AdminDashboardModal } from './components/admin/AdminDashboardModal';
+import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen';
+import { getCurrentUser, logoutUser } from './services/authService';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('documents'); // 'documents' | 'books'
+  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [activeTab, setActiveTab] = useState('documents'); // 'dashboard' | 'documents' | 'books'
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -30,6 +35,7 @@ export default function App() {
   const [isUploadBookOpen, setIsUploadBookOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [viewingPdf, setViewingPdf] = useState(null); // { item, type: 'document' | 'book' }
   const [viewingOcrDoc, setViewingOcrDoc] = useState(null);
   const [editingDocument, setEditingDocument] = useState(null);
@@ -47,6 +53,25 @@ export default function App() {
   const tags = useLiveQuery(() => db.tags.toArray(), []) || [];
   const correspondents = useLiveQuery(() => db.correspondents.toArray(), []) || [];
   const documentTypes = useLiveQuery(() => db.documentTypes.toArray(), []) || [];
+
+  // 1. If not logged in -> Show Landing Page
+  if (!currentUser) {
+    return <LandingPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+  }
+
+  // 2. If logged in but pending or blocked -> Show Pending Approval Screen
+  if (currentUser.status !== 'approved') {
+    return (
+      <PendingApprovalScreen
+        currentUser={currentUser}
+        onUserUpdated={(user) => setCurrentUser(user)}
+        onLogout={() => {
+          logoutUser();
+          setCurrentUser(null);
+        }}
+      />
+    );
+  }
 
   // Filter & Sort Documents
   const filteredDocuments = rawDocuments.filter(doc => {
@@ -125,6 +150,11 @@ export default function App() {
     await db.books.update(id, { rating: newRating });
   };
 
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+  };
+
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden select-none">
       {/* Sidebar Navigation */}
@@ -157,6 +187,9 @@ export default function App() {
           sortBy={sortBy}
           setSortBy={setSortBy}
           totalItems={activeTab === 'documents' ? filteredDocuments.length : filteredBooks.length}
+          currentUser={currentUser}
+          onOpenAdminPanel={() => setIsAdminModalOpen(true)}
+          onLogout={handleLogout}
         />
 
         {/* Content Body */}
@@ -275,6 +308,12 @@ export default function App() {
       <BackupModal
         isOpen={isBackupOpen}
         onClose={() => setIsBackupOpen(false)}
+      />
+
+      <AdminDashboardModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );

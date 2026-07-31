@@ -3,18 +3,45 @@ import Dexie from 'dexie';
 export const db = new Dexie('BibliotecaPessoalDB');
 
 // Define database schema
-db.version(2).stores({
+db.version(3).stores({
   documents: '++id, title, categoryId, docTypeId, correspondentId, createdDate, addedDate',
   books: '++id, title, author, genreId, readStatus, rating, addedDate',
   categories: '++id, &name, type', // type: 'document' | 'book'
   tags: '++id, &name',
   correspondents: '++id, &name',
   documentTypes: '++id, &name',
-  automationRules: '++id, &name, enabled'
+  automationRules: '++id, &name, enabled',
+  users: '++id, &email, role, status'
 });
 
-// Helper function to seed initial default categories, tags, correspondents and rules
+// Helper function to seed initial default categories, tags, correspondents, rules and admin user
 export async function seedInitialData() {
+  // 1. Seed Super Admin User
+  const adminUser = await db.users.where({ email: 'srfernandesaraujo@gmail.com' }).first();
+  if (!adminUser) {
+    await db.users.add({
+      email: 'srfernandesaraujo@gmail.com',
+      name: 'Sérgio Fernandes (Admin)',
+      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      role: 'admin',
+      status: 'approved',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // Seed sample pending user for testing admin approval
+  const sampleUser = await db.users.where({ email: 'joao.silva@gmail.com' }).first();
+  if (!sampleUser) {
+    await db.users.add({
+      email: 'joao.silva@gmail.com',
+      name: 'João Silva',
+      photoURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+      role: 'user',
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+  }
+
   const categoriesCount = await db.categories.count();
   if (categoriesCount === 0) {
     await db.categories.bulkAdd([
@@ -72,7 +99,6 @@ export async function seedInitialData() {
 
   const rulesCount = await db.automationRules.count();
   if (rulesCount === 0) {
-    // Retrieve initial IDs
     const nfCategory = await db.categories.where('name').equals('Notas Fiscais').first();
     const impCategory = await db.categories.where('name').equals('Impostos & Taxas').first();
     const saudeCategory = await db.categories.where('name').equals('Saúde & Exames').first();
