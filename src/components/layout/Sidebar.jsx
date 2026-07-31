@@ -12,7 +12,9 @@ import {
   Clock, 
   Layers,
   Database,
-  BarChart3
+  BarChart3,
+  Bot,
+  Sparkles
 } from 'lucide-react';
 
 export function Sidebar({ 
@@ -58,6 +60,23 @@ export function Sidebar({
             <BarChart3 className="w-4 h-4 text-blue-300" />
             <span>Dashboard / Estatísticas</span>
           </div>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chat')}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
+            activeTab === 'chat'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
+              : 'hover:bg-slate-800 text-slate-300 hover:text-white'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <Bot className="w-4 h-4 text-purple-300" />
+            <span>Assistente IA (Chat)</span>
+          </div>
+          <span className="bg-purple-500/30 text-purple-200 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border border-purple-400/30">
+            IA
+          </span>
         </button>
 
         <button

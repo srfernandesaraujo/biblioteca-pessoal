@@ -17,6 +17,7 @@ import { AnalyticsDashboard } from './components/dashboard/AnalyticsDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { AdminDashboardModal } from './components/admin/AdminDashboardModal';
 import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen';
+import { AiChatAssistant } from './components/chat/AiChatAssistant';
 import { getCurrentUser, logoutUser } from './services/authService';
 
 export default function App() {
@@ -194,7 +195,16 @@ export default function App() {
 
         {/* Content Body */}
         <main className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'dashboard' ? (
+          {activeTab === 'chat' ? (
+            <AiChatAssistant
+              documents={rawDocuments}
+              books={rawBooks}
+              categories={categories}
+              tags={tags}
+              onViewDocPdf={(doc) => setViewingPdf({ item: doc, type: 'document' })}
+              onViewBookPdf={(book) => setViewingPdf({ item: book, type: 'book' })}
+            />
+          ) : activeTab === 'dashboard' ? (
             <AnalyticsDashboard
               documents={rawDocuments}
               books={rawBooks}
