@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Download, ExternalLink, ZoomIn, ZoomOut, FileText, BookOpen, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react';
+import { X, Download, ExternalLink, ZoomIn, ZoomOut, FileText, BookOpen, ChevronLeft, ChevronRight, Bookmark, Cloud } from 'lucide-react';
+import { extractDriveFileId, getDriveEmbedPreviewUrl, getDriveDirectDownloadUrl } from '../../services/googleDriveService';
 import { db } from '../../db/database';
 
 export function PdfViewerModal({
@@ -12,6 +13,9 @@ export function PdfViewerModal({
   const [zoom, setZoom] = useState(100);
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = item?.pageCount || 1;
+
+  const driveId = item ? (item.driveFileId || extractDriveFileId(item.driveLink)) : '';
+  const isGoogleDrive = Boolean(driveId);
 
   useEffect(() => {
     if (item && item.fileBlob) {
@@ -57,6 +61,10 @@ export function PdfViewerModal({
   };
 
   const handleDownload = () => {
+    if (isGoogleDrive) {
+      window.open(getDriveDirectDownloadUrl(driveId), '_blank');
+      return;
+    }
     if (!item.fileBlob) return;
     const url = URL.createObjectURL(item.fileBlob);
     const a = document.createElement('a');
@@ -69,140 +77,128 @@ export function PdfViewerModal({
   };
 
   const handleOpenNewTab = () => {
+    if (isGoogleDrive) {
+      window.open(`https://drive.google.com/file/d/${driveId}/view`, '_blank');
+      return;
+    }
     if (pdfUrl) {
       window.open(`${pdfUrl}#page=${currentPage}`, '_blank');
     }
   };
 
-  const progressPercent = Math.min(100, Math.round((currentPage / totalPages) * 100));
-
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex flex-col justify-between overflow-hidden animate-in fade-in duration-200">
-      {/* Viewer Header */}
-      <div className="bg-slate-900 border-b border-slate-800 text-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
-        {/* Title & Author */}
-        <div className="flex items-center gap-3 truncate max-w-md">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white flex-shrink-0 ${
-            type === 'document' ? 'bg-emerald-600' : 'bg-teal-600'
-          }`}>
-            {type === 'document' ? <FileText className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col justify-between p-2 sm:p-6 overflow-hidden animate-in fade-in duration-200">
+      {/* Header Bar */}
+      <div className="bg-slate-900 text-white rounded-t-2xl px-6 py-3.5 flex items-center justify-between border-b border-slate-800 shadow-xl">
+        <div className="flex items-center gap-3 truncate">
+          <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold flex-shrink-0">
+            {type === 'book' ? <BookOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
           </div>
           <div className="truncate">
-            <h3 className="font-bold text-sm text-white truncate" title={item.title}>
+            <h3 className="font-bold text-sm text-slate-100 truncate flex items-center gap-2">
               {item.title}
+              {isGoogleDrive && (
+                <span className="bg-blue-500/20 text-blue-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30 flex items-center gap-1">
+                  <Cloud className="w-3 h-3 text-cyan-300" /> Google Drive
+                </span>
+              )}
             </h3>
             <p className="text-xs text-slate-400 truncate">
-              {type === 'document' ? item.fileName : `${item.author || 'Autor'} • ${totalPages} pág.`}
+              {type === 'book' ? (item.author || 'Autor Desconhecido') : (item.fileName || 'Documento PDF')}
             </p>
           </div>
         </div>
 
-        {/* Book Page Progress Controls */}
-        {type === 'book' && (
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage <= 1}
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30 rounded transition-colors"
-              title="Página Anterior"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-1.5 text-xs text-slate-200 font-medium">
-              <span>Pág.</span>
-              <input
-                type="number"
-                min={1}
-                max={totalPages}
-                value={currentPage}
-                onChange={(e) => handlePageChange(Number(e.target.value))}
-                className="w-12 px-1 py-0.5 bg-slate-900 border border-slate-700 rounded text-center text-xs text-white font-bold focus:outline-none focus:border-teal-500"
-              />
-              <span className="text-slate-400">/ {totalPages}</span>
-              <span className="bg-teal-900/60 text-teal-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-teal-700/50 ml-1">
-                {progressPercent}%
-              </span>
+        {/* Page navigation & Controls */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {type === 'book' && totalPages > 1 && !isGoogleDrive && (
+            <div className="flex items-center gap-1 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 text-xs font-semibold text-slate-200 mr-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="p-0.5 hover:text-emerald-400 disabled:opacity-30"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span>Pág. {currentPage} de {totalPages}</span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="p-0.5 hover:text-emerald-400 disabled:opacity-30"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
+          )}
 
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages}
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30 rounded transition-colors"
-              title="Próxima Página"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          {!isGoogleDrive && (
+            <div className="hidden sm:flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
+              <button 
+                onClick={() => setZoom(Math.max(50, zoom - 10))}
+                className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-700"
+                title="Diminuir Zoom"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono px-2 text-slate-300">{zoom}%</span>
+              <button 
+                onClick={() => setZoom(Math.min(200, zoom + 10))}
+                className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-700"
+                title="Aumentar Zoom"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
-        {/* Toolbar Controls */}
-        <div className="flex items-center gap-2">
-          {/* Zoom Controls */}
-          <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 text-xs">
-            <button
-              onClick={() => setZoom(Math.max(50, zoom - 15))}
-              className="p-1 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition-colors"
-              title="Reduzir Zoom"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="px-2 font-mono text-slate-300">{zoom}%</span>
-            <button
-              onClick={() => setZoom(Math.min(200, zoom + 15))}
-              className="p-1 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition-colors"
-              title="Aumentar Zoom"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* External Tab */}
-          <button
-            onClick={handleOpenNewTab}
-            title="Abrir em Nova Aba"
-            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span className="hidden md:inline">Nova Aba</span>
-          </button>
-
-          {/* Download Button */}
           <button
             onClick={handleDownload}
-            title="Baixar PDF Localmente"
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold shadow-md"
+            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            title="Baixar Arquivo"
           >
             <Download className="w-4 h-4" />
-            <span>Baixar Arquivo</span>
           </button>
 
-          {/* Close Button */}
+          <button
+            onClick={handleOpenNewTab}
+            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            title={isGoogleDrive ? "Abrir no Google Drive" : "Abrir em Nova Aba"}
+          >
+            <ExternalLink className="w-4 h-4" />
+          </button>
+
           <button
             onClick={handleClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors ml-2"
+            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors ml-2"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* PDF View Container */}
-      <div className="flex-1 bg-slate-900/90 p-4 flex flex-col items-center justify-center overflow-auto relative">
-        {pdfUrl ? (
-          <div 
-            className="w-full h-full max-w-5xl bg-white rounded-xl shadow-2xl overflow-hidden transition-transform duration-200"
-            style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
-          >
+      {/* Viewer Body Area */}
+      <div className="flex-1 bg-slate-950 rounded-b-2xl overflow-hidden flex items-center justify-center p-2 border-t border-slate-800">
+        {isGoogleDrive ? (
+          <iframe
+            src={getDriveEmbedPreviewUrl(driveId)}
+            className="w-full h-full rounded-xl border-0 shadow-2xl bg-white"
+            title={item.title}
+            allow="autoplay"
+          />
+        ) : pdfUrl ? (
+          <div className="w-full h-full flex items-center justify-center overflow-auto">
             <iframe
-              key={`${pdfUrl}-p${currentPage}`}
               src={`${pdfUrl}#page=${currentPage}`}
+              className="w-full h-full rounded-xl border-0 shadow-2xl bg-white"
               title={item.title}
-              className="w-full h-full border-none rounded-xl"
+              style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
             />
           </div>
         ) : (
-          <div className="text-slate-400 text-sm">Carregando visualizador de PDF...</div>
+          <div className="text-center text-slate-400 space-y-2">
+            <FileText className="w-12 h-12 mx-auto text-slate-600" />
+            <p className="text-sm font-semibold">Carregando arquivo PDF...</p>
+          </div>
         )}
       </div>
     </div>
