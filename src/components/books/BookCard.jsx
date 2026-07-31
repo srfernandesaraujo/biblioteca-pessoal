@@ -1,5 +1,6 @@
 import React from 'react';
 import { BookOpen, Star, Download, Trash2, CheckCircle2, Bookmark, Eye, Pencil } from 'lucide-react';
+import { getDriveThumbnailUrl } from '../../services/googleDriveService';
 
 export function BookCard({
   book,
@@ -11,6 +12,8 @@ export function BookCard({
   onUpdateStatus,
   onUpdateRating
 }) {
+  const previewCover = book.coverImage || (book.driveFileId ? getDriveThumbnailUrl(book.driveFileId) : '');
+
   const renderStars = (currentRating) => {
     return [1, 2, 3, 4, 5].map((star) => (
       <button
@@ -66,11 +69,14 @@ export function BookCard({
         onClick={() => onReadBook(book)}
         className="book-cover-shadow relative aspect-[2/3] bg-slate-200 rounded-lg overflow-hidden cursor-pointer border border-slate-300/80 group-hover:border-teal-500 transition-all"
       >
-        {book.coverImage ? (
+        {previewCover ? (
           <img
-            src={book.coverImage}
+            src={previewCover}
             alt={book.title}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-br from-teal-800 to-slate-900 text-white text-center">

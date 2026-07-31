@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, BookOpen, CheckCircle2, Loader2, Sparkles, Plus, Cloud } from 'lucide-react';
 import { processPdfFile } from '../../services/pdfService';
-import { extractDriveFileId, fetchDriveFileBlob } from '../../services/googleDriveService';
+import { extractDriveFileId, fetchDriveFileBlob, openGoogleDrivePicker, getDriveThumbnailUrl } from '../../services/googleDriveService';
 import { db } from '../../db/database';
 
 export function BookUploadModal({
@@ -199,21 +199,58 @@ export function BookUploadModal({
             </div>
           )}
 
-          {/* Source 2: Google Drive Shareable Link */}
+          {/* Source 2: Google Drive Shareable Link & Native Picker */}
           {uploadSource === 'drive' && (
             <div className="space-y-3 bg-blue-50/80 p-4 rounded-xl border border-blue-100">
-              <label className="block text-xs font-bold text-blue-950 uppercase tracking-wider">
-                Link do Livro no Google Drive
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-blue-950 uppercase tracking-wider">
+                  Livro no Google Drive
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openGoogleDrivePicker(async (pickedFile) => {
+                      setDriveUrlInput(pickedFile.url);
+                      setDriveFileId(pickedFile.id);
+                      setTitle(pickedFile.name.replace(/\.[^/.]+$/, ""));
+                      const thumb = getDriveThumbnailUrl(pickedFile.id);
+                      if (thumb) setCoverImage(thumb);
+
+                      setIsExtracting(true);
+                      try {
+                        const blob = await fetchDriveFileBlob(pickedFile.id);
+                        const namedFile = new File([blob], pickedFile.name, { type: blob.type || 'application/pdf' });
+                        await processBookFile(namedFile, pickedFile.name, pickedFile.id);
+                      } catch (err) {
+                        alert(err.message);
+                        setIsExtracting(false);
+                      }
+                    });
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center gap-1.5"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Navegar no Meu Google Drive ☁️</span>
+                </button>
+              </div>
+
               <p className="text-xs text-blue-800">
-                Cole o link compartilhável do seu livro PDF salvo no Google Drive:
+                Escolha o livro no seu Google Drive acima ou cole o link compartilhável abaixo:
               </p>
               
               <div className="flex gap-2">
                 <input
                   type="url"
                   value={driveUrlInput}
-                  onChange={(e) => setDriveUrlInput(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDriveUrlInput(val);
+                    const id = extractDriveFileId(val);
+                    if (id) {
+                      setDriveFileId(id);
+                      setCoverImage(getDriveThumbnailUrl(id));
+                    }
+                  }}
                   placeholder="https://drive.google.com/file/d/1ABC123xyz.../view?usp=sharing"
                   className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />

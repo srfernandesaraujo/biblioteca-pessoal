@@ -1,5 +1,5 @@
 /**
- * Google Drive Direct Link & Streaming Service.
+ * Google Drive Direct Link, Picker & Streaming Service.
  * Allows selecting files directly from Google Drive, performing OCR, and viewing PDFs multi-device.
  */
 
@@ -27,10 +27,6 @@ export function extractFolderId(urlOrId) {
 
 /**
  * Extracts a Google Drive File ID from a full shareable link or raw ID string.
- * Examples:
- * - https://drive.google.com/file/d/1ABC123xyz_456/view?usp=sharing
- * - https://drive.google.com/open?id=1ABC123xyz_456
- * - 1ABC123xyz_456
  */
 export function extractDriveFileId(urlOrId) {
   if (!urlOrId) return '';
@@ -57,6 +53,17 @@ export function extractDriveFileId(urlOrId) {
 }
 
 /**
+ * Generates a thumbnail URL for Google Drive file.
+ * @param {string} fileId 
+ * @returns {string}
+ */
+export function getDriveThumbnailUrl(fileId) {
+  const cleanId = extractDriveFileId(fileId);
+  if (!cleanId) return '';
+  return `https://drive.google.com/thumbnail?id=${cleanId}&sz=w400`;
+}
+
+/**
  * Generates an iframe embed URL for viewing PDF directly from Google Drive.
  * @param {string} fileId 
  * @returns {string}
@@ -74,6 +81,45 @@ export function getDriveEmbedPreviewUrl(fileId) {
 export function getDriveDirectDownloadUrl(fileId) {
   const cleanId = extractDriveFileId(fileId);
   return `https://drive.google.com/uc?export=download&id=${cleanId}`;
+}
+
+/**
+ * Opens Google Drive Web Picker dialog directly inside the browser.
+ */
+export function openGoogleDrivePicker(onFilePicked) {
+  if (typeof window === 'undefined') return;
+
+  if (window.gapi) {
+    window.gapi.load('picker', {
+      callback: () => {
+        try {
+          const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
+          view.setMimeTypes('application/pdf,image/png,image/jpeg,image/jpg');
+
+          const picker = new window.google.picker.PickerBuilder()
+            .addView(view)
+            .setCallback((data) => {
+              if (data.action === window.google.picker.Action.PICKED) {
+                const doc = data.docs[0];
+                if (doc) {
+                  onFilePicked({
+                    id: doc.id,
+                    name: doc.name,
+                    url: doc.url || `https://drive.google.com/file/d/${doc.id}/view`,
+                    iconUrl: doc.iconUrl
+                  });
+                }
+              }
+            })
+            .build();
+
+          picker.setVisible(true);
+        } catch (err) {
+          console.warn('Google Picker fallback to manual URL input:', err);
+        }
+      }
+    });
+  }
 }
 
 /**

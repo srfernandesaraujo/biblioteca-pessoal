@@ -1,5 +1,6 @@
 import React from 'react';
-import { FileText, Eye, Download, FileCode, Tag, Calendar, User, Trash2, Pencil } from 'lucide-react';
+import { FileText, Eye, Download, FileCode, Tag, Calendar, User, Trash2, Pencil, Cloud } from 'lucide-react';
+import { getDriveThumbnailUrl } from '../../services/googleDriveService';
 
 export function DocumentCard({
   doc,
@@ -13,6 +14,8 @@ export function DocumentCard({
   onEditDoc,
   onDelete
 }) {
+  const previewImage = doc.thumbnail || (doc.driveFileId ? getDriveThumbnailUrl(doc.driveFileId) : '');
+
   return (
     <div className="doc-card bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:border-slate-300 relative group">
       {/* Top Banner & Tags (Estilo Paperless) */}
@@ -39,6 +42,12 @@ export function DocumentCard({
             </span>
           );
         })}
+
+        {doc.driveFileId && (
+          <span className="text-[9px] bg-blue-500/10 text-blue-700 font-bold px-1.5 py-0.5 rounded border border-blue-200 flex items-center gap-0.5 ml-auto">
+            <Cloud className="w-2.5 h-2.5" /> Drive
+          </span>
+        )}
       </div>
 
       {/* Thumbnail Preview Area */}
@@ -46,11 +55,14 @@ export function DocumentCard({
         onClick={() => onViewPdf(doc)}
         className="h-44 bg-slate-100 relative cursor-pointer group-hover:opacity-95 transition-opacity flex items-center justify-center overflow-hidden border-b border-slate-100"
       >
-        {doc.thumbnail ? (
+        {previewImage ? (
           <img 
-            src={doc.thumbnail} 
+            src={previewImage} 
             alt={doc.title} 
             className="w-full h-full object-cover object-top"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
           />
         ) : (
           <div className="flex flex-col items-center gap-2 text-slate-400">
