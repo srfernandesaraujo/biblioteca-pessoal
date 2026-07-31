@@ -11,8 +11,14 @@ import {
   Trash2,
   Lightbulb,
   Search,
-  MessageSquare
+  MessageSquare,
+  Key,
+  Settings,
+  X,
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
+import { getStoredGeminiApiKey, saveGeminiApiKey, queryGeminiRAG } from '../../services/geminiService';
 
 // Helper to remove accents and normalize text
 function normalize(str) {
@@ -20,12 +26,10 @@ function normalize(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-// Helper to extract financial values from text (handles R$, VALOR:, and currency numbers)
+// Helper to extract financial values from text
 function extractValuesFromText(text) {
   if (!text) return [];
   const values = [];
-
-  // Match patterns like "VALOR:\s*9.600,00", "R$\s*9.600,00", "VALOR R$ 9.600,00", or standalone "9.600,00"
   const patterns = [
     /(?:VALOR|TOTAL|PAGO|QUANTIA)\s*:?\s*(?:R\$\s*)?([\d\.]+\,\d{2})/gi,
     /R\$\s*([\d\.]+\,\d{2})/gi,
@@ -56,6 +60,10 @@ export function AiChatAssistant({
   onViewDocPdf,
   onViewBookPdf
 }) {
+  const [geminiKey, setGeminiKey] = useState(getStoredGeminiApiKey());
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [tempKeyInput, setTempKeyInput] = useState(geminiKey);
+
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -76,6 +84,12 @@ export function AiChatAssistant({
     scrollToBottom();
   }, [messages, isTyping]);
 
+  const handleSaveApiKey = () => {
+    saveGeminiApiKey(tempKeyInput);
+    setGeminiKey(tempKeyInput.trim());
+    setIsKeyModalOpen(false);
+  };
+
   // Preset suggested prompts
   const quickPrompts = [
     { label: '👨‍💼 Valor pago ao corretor André', prompt: 'Qual valor pago ao corretor André?' },
@@ -84,56 +98,55 @@ export function AiChatAssistant({
     { label: '📖 Livros em leitura', prompt: 'Quais livros estou lendo e qual meu progresso de leitura?' }
   ];
 
-  // Advanced Local RAG Search & Response Generator
-  const generateAiResponse = (userQuery) => {
+  // Local RAG Retrieval (Filters matching documents and books to attach as context)
+  const getRelevantContext = (userQuery) => {
     const normQuery = normalize(userQuery);
-    
-    // Stopwords to filter out when searching for specific names or terms
-    const stopwords = ['qual', 'quais', 'valor', 'pago', 'pagou', 'quanto', 'custou', 'gasto', 'foi', 'para', 'como', 'onde', 'qual', 'este', 'esta', 'meu', 'minha', 'sobre', 'que', 'dos', 'das', 'com'];
+    const stopwords = ['qual', 'quais', 'valor', 'pago', 'pagou', 'quanto', 'custou', 'gasto', 'foi', 'para', 'como', 'onde', 'este', 'esta', 'meu', 'minha', 'sobre', 'que', 'dos', 'das', 'com'];
     const queryTokens = normQuery.split(/\s+/).filter(token => token.length > 2 && !stopwords.includes(token));
 
-    // 1. Search across Documents (OCR text, title, filename)
-    const matchingDocs = documents.filter(doc => {
+    const matchedDocs = documents.filter(doc => {
       const normTitle = normalize(doc.title);
       const normFile = normalize(doc.fileName);
       const normOcr = normalize(doc.ocrText);
-
-      // Check token matches
-      return queryTokens.some(token => 
-        normTitle.includes(token) || normFile.includes(token) || normOcr.includes(token)
-      );
+      return queryTokens.some(token => normTitle.includes(token) || normFile.includes(token) || normOcr.includes(token));
     });
 
-    // 2. Search across Books
-    const matchingBooks = books.filter(book => {
+    const matchedBooks = books.filter(book => {
       const normTitle = normalize(book.title);
       const normAuthor = normalize(book.author);
       return queryTokens.some(token => normTitle.includes(token) || normAuthor.includes(token));
     });
 
-    // If specific document matches were found!
-    if (matchingDocs.length > 0) {
-      let text = `Encontrei **${matchingDocs.length} documento(s)** relevante(s) para sua pergunta:\n\n`;
+    return {
+      docs: matchedDocs.length > 0 ? matchedDocs : documents.slice(0, 5),
+      books: matchedBooks.length > 0 ? matchedBooks : books.slice(0, 3)
+    };
+  };
 
-      matchingDocs.forEach((doc, idx) => {
+  // Local Fallback RAG Engine
+  const generateLocalResponse = (userQuery, matchedDocs, matchedBooks) => {
+    const normQuery = normalize(userQuery);
+
+    if (matchedDocs.length > 0) {
+      let text = `Encontrei **${matchedDocs.length} documento(s)** relevante(s) para sua pergunta:\n\n`;
+
+      matchedDocs.forEach((doc, idx) => {
         text += `📄 **${idx + 1}. ${doc.title || doc.fileName}**\n`;
 
-        // Extract values from OCR text
         const vals = extractValuesFromText(doc.ocrText);
         if (vals.length > 0) {
           text += `• **Valor identificado**: ${vals[0].formatted}\n`;
         }
 
-        // Snippet extraction around query token
         if (doc.ocrText) {
           const lines = doc.ocrText.split('\n');
           const relevantLines = lines.filter(line => {
             const normLine = normalize(line);
-            return queryTokens.some(token => normLine.includes(token));
+            return normLine.length > 3 && (normQuery.includes(normLine) || normLine.includes('valor') || normLine.includes('pago') || normLine.includes('nome'));
           }).slice(0, 4);
 
           if (relevantLines.length > 0) {
-            text += `• **Trecho extraído do OCR**:\n`;
+            text += `• **Trecho do OCR**:\n`;
             relevantLines.forEach(l => {
               text += `> "${l.trim()}"\n`;
             });
@@ -142,10 +155,9 @@ export function AiChatAssistant({
         text += `\n`;
       });
 
-      return { text, relevantDocs: matchingDocs };
+      return text;
     }
 
-    // Special handler for global financial total (if query is purely about total money spent)
     if (normQuery.includes('total') || normQuery.includes('acumulado') || normQuery.includes('soma')) {
       let totalSum = 0;
       const docList = [];
@@ -165,58 +177,14 @@ export function AiChatAssistant({
         docList.forEach(({ doc, val }) => {
           text += `• **${doc.title}**: ${val}\n`;
         });
-      } else {
-        text += `Não identifiquei valores numéricos explícitos nos **${documents.length} documentos** cadastrados.`;
       }
-
-      return { text, relevantDocs: docList.map(d => d.doc) };
+      return text;
     }
 
-    // Special handler for Contracts
-    if (normQuery.includes('contrato')) {
-      const contractCategory = categories.find(c => normalize(c.name).includes('contrato'));
-      const contractDocs = documents.filter(d => 
-        (contractCategory && d.categoryId === contractCategory.id) || 
-        normalize(d.title).includes('contrato') || 
-        normalize(d.ocrText).includes('contrato')
-      );
-
-      if (contractDocs.length > 0) {
-        let text = `Encontrei **${contractDocs.length} contrato(s)** na sua biblioteca:\n\n`;
-        contractDocs.forEach(d => {
-          text += `• **${d.title}** (${d.createdDate || d.addedDate ? new Date(d.createdDate || d.addedDate).toLocaleDateString('pt-BR') : 'Sem data'})\n`;
-        });
-        return { text, relevantDocs: contractDocs };
-      }
-    }
-
-    // Special handler for Books
-    if (normQuery.includes('livro') || normQuery.includes('estante') || normQuery.includes('lendo')) {
-      const reading = books.filter(b => b.readStatus === 'reading');
-      let text = `Sua estante virtual possui **${books.length} obras**.\n\n`;
-      if (reading.length > 0) {
-        text += `📖 **Lendo atualmente (${reading.length})**:\n`;
-        reading.forEach(b => {
-          const prog = b.pageCount ? Math.round(((b.lastReadPage || 1) / b.pageCount) * 100) : 0;
-          text += `• *${b.title}* de ${b.author || 'Autor desconhecido'} (Pág. ${b.lastReadPage || 1} de ${b.pageCount || '?'} • ${prog}%)\n`;
-        });
-      }
-      return { text, relevantBooks: books.slice(0, 5) };
-    }
-
-    // General fallback search across all document text
-    if (documents.length > 0) {
-      let text = `Não encontrei referências exatas para **"${userQuery}"** nos seus documentos.\n\n`;
-      text += `Você tem **${documents.length} documento(s)** cadastrado(s). Verifique se o documento desejado foi escaneado com OCR e se o texto extraído contém o termo pesquisado.`;
-      return { text, relevantDocs: documents.slice(0, 3) };
-    }
-
-    return {
-      text: `Nenhum documento cadastrado no sistema ainda. Adicione um PDF ou imagem no módulo Documentos para que a IA possa ler e responder suas perguntas!`
-    };
+    return `Não encontrei referências exatas para **"${userQuery}"** nos seus **${documents.length} documentos** cadastrados.`;
   };
 
-  const handleSendMessage = (textToSend) => {
+  const handleSendMessage = async (textToSend) => {
     const query = textToSend || inputText;
     if (!query.trim()) return;
 
@@ -231,20 +199,40 @@ export function AiChatAssistant({
     if (!textToSend) setInputText('');
     setIsTyping(true);
 
-    // Simulate AI thinking time
-    setTimeout(() => {
-      const response = generateAiResponse(query);
+    const { docs, books: relBooks } = getRelevantContext(query);
+
+    try {
+      let answerText = '';
+      let isGeminiPowered = false;
+
+      if (geminiKey.trim()) {
+        try {
+          answerText = await queryGeminiRAG(query, docs, relBooks, geminiKey);
+          isGeminiPowered = true;
+        } catch (geminiError) {
+          console.warn('Gemini API Error, falling back to Local RAG:', geminiError);
+          answerText = generateLocalResponse(query, docs, relBooks);
+        }
+      } else {
+        answerText = generateLocalResponse(query, docs, relBooks);
+      }
+
       const aiMsg = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: response.text,
-        relevantDocs: response.relevantDocs,
-        relevantBooks: response.relevantBooks,
+        text: answerText,
+        isGemini: isGeminiPowered,
+        relevantDocs: docs,
+        relevantBooks: relBooks,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
+
       setMessages(prev => [...prev, aiMsg]);
+    } catch (e) {
+      console.error(e);
+    } finally {
       setIsTyping(false);
-    }, 600);
+    }
   };
 
   return (
@@ -258,22 +246,45 @@ export function AiChatAssistant({
           <div>
             <h2 className="font-bold text-base flex items-center gap-2">
               Assistente de IA da Biblioteca
-              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> IA Local RAG
-              </span>
+              {geminiKey ? (
+                <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-purple-400/40 flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-amber-300" /> Google Gemini AI
+                </span>
+              ) : (
+                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> IA Local RAG
+                </span>
+              )}
             </h2>
-            <p className="text-xs text-slate-400">Busca semântica avançada em notas fiscais, recibos, contratos e livros PDF</p>
+            <p className="text-xs text-slate-400">Análise de notas fiscais, recibos, contratos e livros em PDF</p>
           </div>
         </div>
 
-        <button
-          onClick={() => setMessages(messages.slice(0, 1))}
-          className="text-xs text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1.5"
-          title="Limpar conversa"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span className="hidden sm:inline">Limpar Chat</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Gemini API Key Button */}
+          <button
+            onClick={() => {
+              setTempKeyInput(geminiKey);
+              setIsKeyModalOpen(true);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              geminiKey
+                ? 'bg-purple-900/60 text-purple-200 border-purple-700/60 hover:bg-purple-900'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+            }`}
+          >
+            <Key className="w-3.5 h-3.5 text-amber-400" />
+            <span>{geminiKey ? 'Chave Gemini Conectada' : 'Inserir API Key Gemini'}</span>
+          </button>
+
+          <button
+            onClick={() => setMessages(messages.slice(0, 1))}
+            className="text-xs text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-slate-800 transition-colors"
+            title="Limpar conversa"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Messages Scroll Area */}
@@ -284,12 +295,22 @@ export function AiChatAssistant({
             className={`flex gap-3.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.sender === 'ai' && (
-              <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center flex-shrink-0 shadow-xs border border-slate-700">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs border ${
+                msg.isGemini
+                  ? 'bg-gradient-to-tr from-purple-900 to-blue-900 text-purple-300 border-purple-700'
+                  : 'bg-slate-900 text-emerald-400 border-slate-700'
+              }`}>
                 <Bot className="w-5 h-5" />
               </div>
             )}
 
             <div className={`max-w-2xl space-y-2 ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+              {msg.isGemini && (
+                <span className="text-[10px] font-extrabold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 inline-flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-purple-600" /> Resposta gerada pelo Google Gemini 1.5 Flash
+                </span>
+              )}
+
               <div
                 className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-xs ${
                   msg.sender === 'user'
@@ -390,7 +411,7 @@ export function AiChatAssistant({
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Pergunte à IA sobre faturas, contratos, exames ou livros em PDF..."
+            placeholder="Pergunte ao Gemini sobre suas faturas, recibos, contratos ou livros em PDF..."
             className="flex-1 px-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
           />
 
@@ -404,6 +425,75 @@ export function AiChatAssistant({
           </button>
         </form>
       </div>
+
+      {/* Gemini API Key Configuration Modal */}
+      {isKeyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-sm text-white">Chave da API do Google Gemini</h3>
+              </div>
+              <button onClick={() => setIsKeyModalOpen(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Insira sua API Key gratuita do Google Gemini obtida no **Google AI Studio**. Quando cadastrada, a IA do Gemini responderá suas perguntas com compreensão profunda em linguagem natural!
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gemini API Key</label>
+              <input
+                type="password"
+                value={tempKeyInput}
+                onChange={(e) => setTempKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+              <p className="font-bold text-amber-400">💡 Como pegar uma chave grátis no Google AI Studio:</p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                <li>Acesse <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-purple-400 underline">aistudio.google.com/app/apikey</a></li>
+                <li>Clique em <strong>Get API Key</strong> (Criar chave de API)</li>
+                <li>Copie a chave criada e cole aqui acima!</li>
+              </ol>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              {geminiKey && (
+                <button
+                  onClick={() => {
+                    saveGeminiApiKey('');
+                    setGeminiKey('');
+                    setTempKeyInput('');
+                    setIsKeyModalOpen(false);
+                  }}
+                  className="px-3 py-1.5 text-xs text-rose-400 hover:text-rose-300 mr-auto"
+                >
+                  Remover Chave
+                </button>
+              )}
+              <button
+                onClick={() => setIsKeyModalOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveApiKey}
+                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg shadow-md"
+              >
+                Salvar Chave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
