@@ -21,9 +21,12 @@ import {
 } from 'lucide-react';
 import { processRealGoogleToken, loginWithGoogleMock } from '../../services/authService';
 
+// Official User Google OAuth Client ID
+const DEFAULT_GOOGLE_CLIENT_ID = "613660293885-la1bfsrahqdk2dujbkcvlriboi33or9r.apps.googleusercontent.com";
+
 export function LandingPage({ onLoginSuccess }) {
   const [googleClientId, setGoogleClientId] = useState(
-    localStorage.getItem('biblioteca_google_client_id') || ''
+    DEFAULT_GOOGLE_CLIENT_ID
   );
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
