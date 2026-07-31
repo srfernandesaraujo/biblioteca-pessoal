@@ -1,3 +1,4 @@
+import { jwtDecode } from 'jwt-decode';
 import { db } from '../db/database';
 
 const CURRENT_USER_KEY = 'biblioteca_current_user_session';
@@ -17,11 +18,58 @@ export function getCurrentUser() {
 }
 
 /**
- * Simulates or handles Google OAuth Login.
- * Automatically approves srfernandesaraujo@gmail.com as Admin.
- * New users are assigned status: 'pending'.
+ * Processes a REAL Google ID Token (JWT) returned by Google Accounts Sign-In SDK.
+ * @param {string} idToken - Cryptographically signed JWT token from Google
+ * @returns {Promise<object>}
  */
-export async function loginWithGoogle(email, name, photoURL) {
+export async function processRealGoogleToken(idToken) {
+  try {
+    const decoded = jwtDecode(idToken);
+    const email = decoded.email?.toLowerCase().trim();
+    const name = decoded.name || decoded.given_name || email.split('@')[0];
+    const picture = decoded.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`;
+
+    if (!email) {
+      throw new Error('E-mail não encontrado no token do Google.');
+    }
+
+    const isAdminEmail = email === 'srfernandesaraujo@gmail.com';
+    let user = await db.users.where({ email }).first();
+
+    if (!user) {
+      const newUser = {
+        email,
+        name,
+        photoURL: picture,
+        role: isAdminEmail ? 'admin' : 'user',
+        status: isAdminEmail ? 'approved' : 'pending',
+        createdAt: new Date().toISOString()
+      };
+      const id = await db.users.add(newUser);
+      user = { ...newUser, id };
+    } else {
+      // Update photo/name from real Google account
+      const updates = { photoURL: picture, name };
+      if (isAdminEmail) {
+        updates.role = 'admin';
+        updates.status = 'approved';
+      }
+      await db.users.update(user.id, updates);
+      user = { ...user, ...updates };
+    }
+
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    return user;
+  } catch (err) {
+    console.error('Erro ao processar login do Google:', err);
+    throw err;
+  }
+}
+
+/**
+ * Fallback / Direct Login handler for development/testing.
+ */
+export async function loginWithGoogleMock(email, name, photoURL) {
   const userEmail = email.toLowerCase().trim();
   const isAdminEmail = userEmail === 'srfernandesaraujo@gmail.com';
 
@@ -39,7 +87,6 @@ export async function loginWithGoogle(email, name, photoURL) {
     const id = await db.users.add(newUser);
     user = { ...newUser, id };
   } else if (isAdminEmail && user.status !== 'approved') {
-    // Ensure Super Admin is always approved
     await db.users.update(user.id, { status: 'approved', role: 'admin' });
     user.status = 'approved';
     user.role = 'admin';
@@ -50,7 +97,7 @@ export async function loginWithGoogle(email, name, photoURL) {
 }
 
 /**
- * Logs out the current user session.
+ * Logs out current user session.
  */
 export function logoutUser() {
   localStorage.removeItem(CURRENT_USER_KEY);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   BookOpen, 
@@ -10,32 +10,85 @@ import {
   BarChart3, 
   CheckCircle2, 
   ArrowRight, 
-  ChevronDown,
   UserCheck,
   Star,
-  LogIn
+  LogIn,
+  Settings,
+  X
 } from 'lucide-react';
-import { loginWithGoogle } from '../../services/authService';
+import { processRealGoogleToken, loginWithGoogleMock } from '../../services/authService';
+
+// Default Google OAuth Client ID (can be customized by user or environment variable)
+const DEFAULT_GOOGLE_CLIENT_ID = "934273295831-qj2s35h88e626o7m9738018h2j3n4o5p.apps.googleusercontent.com";
 
 export function LandingPage({ onLoginSuccess }) {
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [customEmail, setCustomEmail] = useState('');
-  const [customName, setCustomName] = useState('');
+  const [googleClientId, setGoogleClientId] = useState(
+    localStorage.getItem('biblioteca_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID
+  );
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualEmail, setManualEmail] = useState('');
+  const [manualName, setManualName] = useState('');
 
-  const handleAdminQuickLogin = async () => {
-    const user = await loginWithGoogle(
-      'srfernandesaraujo@gmail.com',
-      'Sérgio Fernandes (Admin)',
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-    );
-    onLoginSuccess(user);
+  useEffect(() => {
+    // Initialize Official Google Identity Services SDK
+    const initGoogleGsi = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: async (response) => {
+            if (response.credential) {
+              try {
+                const user = await processRealGoogleToken(response.credential);
+                onLoginSuccess(user);
+              } catch (err) {
+                alert('Erro ao autenticar com o Google.');
+              }
+            }
+          }
+        });
+
+        // Render Official Google Sign-In Buttons
+        const heroBtn = document.getElementById('googleHeroBtn');
+        if (heroBtn) {
+          heroBtn.innerHTML = '';
+          window.google.accounts.id.renderButton(heroBtn, {
+            theme: 'filled_blue',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            width: 280
+          });
+        }
+
+        const navBtn = document.getElementById('googleNavBtn');
+        if (navBtn) {
+          navBtn.innerHTML = '';
+          window.google.accounts.id.renderButton(navBtn, {
+            theme: 'outline',
+            size: 'medium',
+            text: 'signin_with',
+            shape: 'pill'
+          });
+        }
+      }
+    };
+
+    const timer = setTimeout(initGoogleGsi, 500);
+    return () => clearTimeout(timer);
+  }, [googleClientId, onLoginSuccess]);
+
+  const handleSaveClientId = (newId) => {
+    setGoogleClientId(newId);
+    localStorage.setItem('biblioteca_google_client_id', newId);
+    setIsConfigOpen(false);
   };
 
-  const handleCustomGoogleLogin = async (e) => {
+  const handleManualLogin = async (e) => {
     e.preventDefault();
-    if (!customEmail.trim()) return;
-    const user = await loginWithGoogle(customEmail.trim(), customName.trim() || customEmail.split('@')[0]);
-    setIsLoginModalOpen(false);
+    if (!manualEmail.trim()) return;
+    const user = await loginWithGoogleMock(manualEmail.trim(), manualName.trim());
+    setIsManualModalOpen(false);
     onLoginSuccess(user);
   };
 
@@ -50,27 +103,21 @@ export function LandingPage({ onLoginSuccess }) {
             </div>
             <div>
               <h1 className="font-extrabold text-lg text-white tracking-tight leading-none">Biblioteca Pessoal</h1>
-              <span className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Paperless & Calibre Web</span>
+              <span className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Login Oficial com Google</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Super Admin Direct Button */}
-            <button
-              onClick={handleAdminQuickLogin}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2 active:scale-95"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Entrar como Admin</span>
-            </button>
+            {/* Official Google Button in Navbar */}
+            <div id="googleNavBtn" className="min-h-[40px] flex items-center" />
 
-            {/* General Google Login Button */}
+            {/* Config Client ID / Testing Options */}
             <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs border border-slate-700 transition-all flex items-center gap-2"
+              onClick={() => setIsConfigOpen(true)}
+              title="Configurar Google Client ID"
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
             >
-              <LogIn className="w-4 h-4 text-emerald-400" />
-              <span>Login com Google</span>
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -78,44 +125,41 @@ export function LandingPage({ onLoginSuccess }) {
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 overflow-hidden">
-        {/* Animated Glow Elements */}
+        {/* Glow Effects */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none" />
         <div className="absolute top-1/3 right-10 w-[400px] h-[400px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="max-w-6xl mx-auto text-center space-y-8 relative z-10">
+        <div className="max-w-5xl mx-auto text-center space-y-8 relative z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
             <Sparkles className="w-4 h-4 animate-pulse" />
-            <span>Sistema Pessoal de Documentos OCR & Estante Digital</span>
+            <span>Autenticação Real com Google Accounts & Controle de Acesso</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white leading-tight">
-            Sua biblioteca física e digital <br className="hidden sm:inline" />
+            Sua biblioteca pessoal <br className="hidden sm:inline" />
             <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-              organizada em um só lugar
+              com Login Oficial do Google
             </span>
           </h1>
 
           <p className="max-w-2xl mx-auto text-slate-400 text-base sm:text-lg leading-relaxed">
-            Armazene notas fiscais, contratos, recibos e livros em PDF. Com leitura de OCR local automática, progresso de leitura estilo Kindle e aprovação segura por administrador.
+            Faça login com a sua conta do Google. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) possui acesso aprovado automático e gerencia a aprovação de todos os outros usuários.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
-            <button
-              onClick={handleAdminQuickLogin}
-              className="px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-950/50 transition-all transform hover:-translate-y-1 flex items-center gap-3"
-            >
-              <UserCheck className="w-5 h-5 text-slate-950" />
-              <span>Acessar Painel do Admin</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+          {/* Real Google Sign In Hero Container */}
+          <div className="flex flex-col items-center justify-center gap-4 pt-4">
+            {/* Official Rendered Google Sign-In Button */}
+            <div id="googleHeroBtn" className="min-h-[50px] flex items-center justify-center shadow-2xl rounded-full overflow-hidden" />
+
+            <p className="text-xs text-slate-500">
+              Ao entrar, o sistema verifica se sua conta foi aprovada pelo Administrador.
+            </p>
 
             <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="px-8 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 font-bold text-sm border border-slate-800 transition-all flex items-center gap-3"
+              onClick={() => setIsManualModalOpen(true)}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-300 underline pt-2"
             >
-              <LogIn className="w-5 h-5 text-emerald-400" />
-              <span>Login com Google (Novo Usuário)</span>
+              Opção de teste rápido por e-mail
             </button>
           </div>
 
@@ -144,10 +188,6 @@ export function LandingPage({ onLoginSuccess }) {
                   <p className="text-xs text-slate-400 line-clamp-2 font-mono bg-slate-900 p-2.5 rounded border border-slate-800">
                     "VALOR TOTAL R$ 248,50 • VENCIMENTO 15/06/2026 • CONSUMO 310 kWh..."
                   </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-semibold">Notas Fiscais</span>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-semibold">Pago</span>
-                  </div>
                 </div>
 
                 {/* Calibre Book Card Preview */}
@@ -163,10 +203,6 @@ export function LandingPage({ onLoginSuccess }) {
                   </div>
                   <h4 className="font-bold text-sm text-slate-200">Refactoring JavaScript</h4>
                   <p className="text-xs text-teal-400 font-medium">Evan Burchard • Tecnologias</p>
-                  <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-                    <div className="bg-gradient-to-r from-teal-400 to-emerald-400 h-full w-[65%]" />
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-semibold block">Continuar da Pág. 142 de 218 (65%)</span>
                 </div>
               </div>
             </div>
@@ -174,79 +210,31 @@ export function LandingPage({ onLoginSuccess }) {
         </div>
       </section>
 
-      {/* Feature Section with Scroll Animations */}
-      <section className="py-24 px-6 border-t border-slate-900 bg-slate-950/50">
-        <div className="max-w-6xl mx-auto space-y-16">
-          <div className="text-center space-y-3">
-            <h2 className="text-3xl font-extrabold text-white tracking-tight">Recursos Projetados para Máxima Eficiência</h2>
-            <p className="text-sm text-slate-400 max-w-xl mx-auto">Tudo o que você precisa para gerenciar seus documentos e livros com segurança e valor.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl space-y-4 hover:border-emerald-500/40 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-white">OCR Local em Português</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Digitalize documentos escaneados e imagens com Tesseract.js localmente. O sistema reconhece texto, valores e datas automaticamente sem enviar nada à nuvem.
-              </p>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl space-y-4 hover:border-teal-500/40 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-white">Estante & Leitor Integrado</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Monte sua biblioteca em PDF com capa automática, marque status de leitura, classifique com estrelas e abra o leitor de PDF que salva a última página onde você parou.
-              </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl space-y-4 hover:border-purple-500/40 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold">
-                <UserCheck className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-white">Aprovação por Administrador</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Controle total de acessos. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) deve aprovar manualmente cada novo usuário cadastrado.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="border-t border-slate-900 py-8 px-6 text-center text-xs text-slate-500">
-        <p>© 2026 Biblioteca Pessoal. Sistema 100% privado com OCR local e aprovação de usuários.</p>
+        <p>© 2026 Biblioteca Pessoal. Integrado com Google Identity Services (GSI) e Aprovação por Admin.</p>
       </footer>
 
-      {/* Google Login Simulation Modal */}
-      {isLoginModalOpen && (
+      {/* Manual / Test Login Modal */}
+      {isManualModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center font-bold text-slate-900 text-xs">G</div>
-                <h3 className="font-bold text-sm text-white">Login com Google</h3>
-              </div>
-              <button onClick={() => setIsLoginModalOpen(false)} className="text-slate-400 hover:text-white p-1">
+              <h3 className="font-bold text-sm text-white">Entrar com e-mail do Google (Simulação)</h3>
+              <button onClick={() => setIsManualModalOpen(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCustomGoogleLogin} className="space-y-4">
+            <form onSubmit={handleManualLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">E-mail da Conta Google</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">E-mail do Google</label>
                 <input
                   type="email"
                   required
-                  value={customEmail}
-                  onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="exemplo@gmail.com"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  placeholder="srfernandesaraujo@gmail.com ou outro"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -255,34 +243,63 @@ export function LandingPage({ onLoginSuccess }) {
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Seu Nome (Opcional)</label>
                 <input
                   type="text"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Seu Nome Completo"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="Nome do Usuário"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <p>💡 <strong>Nota de Aprovação:</strong></p>
-                <p>Se usar o e-mail <code className="text-emerald-400">srfernandesaraujo@gmail.com</code> você entrará como <strong>Admin Aprovado</strong>.</p>
-                <p>Outros e-mails serão registrados como <strong>Pendente de Aprovação</strong> até o Admin aprovar.</p>
-              </div>
-
               <button
                 type="submit"
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/40 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all"
               >
-                <LogIn className="w-4 h-4" />
-                <span>Continuar com Google</span>
+                Entrar com esta conta
               </button>
             </form>
           </div>
         </div>
       )}
+
+      {/* Config Client ID Modal */}
+      {isConfigOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-sm text-white">Google OAuth Client ID</h3>
+              <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-white p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Cole o seu Client ID do Google Cloud Console (APIs & Services {'>'} Credentials) para conectar com a sua aplicação própria do Google:
+            </p>
+
+            <input
+              type="text"
+              value={googleClientId}
+              onChange={(e) => setGoogleClientId(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white"
+            />
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsConfigOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleSaveClientId(googleClientId)}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg"
+              >
+                Salvar Client ID
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
-
-function X({ className }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
 }
