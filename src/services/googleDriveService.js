@@ -95,7 +95,7 @@ export function getDriveEmbedPreviewUrl(fileId) {
  */
 export function getDriveDirectDownloadUrl(fileId) {
   const cleanId = extractDriveFileId(fileId);
-  return `https://drive.google.com/uc?export=download&id=${cleanId}`;
+  return `https://drive.google.com/uc?export=download&confirm=t&id=${cleanId}`;
 }
 
 /**
