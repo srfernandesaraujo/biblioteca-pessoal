@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Upload, FileText, CheckCircle2, Loader2, Sparkles, Tag, Plus, Zap, Cloud, ExternalLink, HelpCircle, Key } from 'lucide-react';
 import { performOcrOnFile, extractSmartMetadataFromOcr } from '../../services/ocrService';
 import { runAutomationRules } from '../../services/automationService';
-import { extractDriveFileId, fetchDriveFileBlob, openGoogleDriveWeb, getDriveThumbnailUrl, openGoogleDrivePicker, getStoredDriveApiKey, saveDriveApiKey } from '../../services/googleDriveService';
+import { extractDriveFileId, fetchDriveFileBlob, openGoogleDriveWeb, getDriveThumbnailUrl, requestGoogleDriveTokenAndPicker, getStoredDriveApiKey, saveDriveApiKey } from '../../services/googleDriveService';
 import { db } from '../../db/database';
 
 export function DocumentUploadModal({
@@ -127,7 +127,7 @@ export function DocumentUploadModal({
     }
 
     saveDriveApiKey(driveApiKey);
-    openGoogleDrivePicker({
+    requestGoogleDriveTokenAndPicker({
       apiKey: driveApiKey.trim(),
       onFilePicked: async (pickedFile) => {
         setDriveUrlInput(pickedFile.url);

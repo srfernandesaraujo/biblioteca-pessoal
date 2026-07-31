@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, BookOpen, CheckCircle2, Loader2, Sparkles, Plus, Cloud, ExternalLink, HelpCircle, Key } from 'lucide-react';
 import { processPdfFile } from '../../services/pdfService';
-import { extractDriveFileId, fetchDriveFileBlob, openGoogleDriveWeb, getDriveThumbnailUrl, openGoogleDrivePicker, getStoredDriveApiKey, saveDriveApiKey } from '../../services/googleDriveService';
+import { extractDriveFileId, fetchDriveFileBlob, openGoogleDriveWeb, getDriveThumbnailUrl, requestGoogleDriveTokenAndPicker, getStoredDriveApiKey, saveDriveApiKey } from '../../services/googleDriveService';
 import { db } from '../../db/database';
 
 export function BookUploadModal({
@@ -85,7 +85,7 @@ export function BookUploadModal({
     }
 
     saveDriveApiKey(driveApiKey);
-    openGoogleDrivePicker({
+    requestGoogleDriveTokenAndPicker({
       apiKey: driveApiKey.trim(),
       onFilePicked: async (pickedFile) => {
         setDriveUrlInput(pickedFile.url);

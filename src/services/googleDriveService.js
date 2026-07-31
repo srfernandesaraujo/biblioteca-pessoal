@@ -5,6 +5,7 @@
 
 const DRIVE_FOLDER_KEY = 'biblioteca_google_drive_folder_id';
 const DRIVE_API_KEY_STORAGE = 'biblioteca_google_drive_api_key';
+const DEFAULT_CLIENT_ID = '613660293885-la1bfsrahqdk2dujbkcvlriboi33or9r.apps.googleusercontent.com';
 
 export function getStoredDriveFolderId() {
   return localStorage.getItem(DRIVE_FOLDER_KEY) || '';
@@ -105,10 +106,10 @@ export function openGoogleDriveWeb() {
 }
 
 /**
- * Opens Google Drive Web Picker modal using Developer API Key.
- * @param {object} params - { apiKey, onFilePicked, onError }
+ * Opens Google Drive Web Picker modal using Developer API Key and OAuth 2.0 Access Token.
+ * Google Picker REQUIRES both API Key and OAuth Token to prevent 403 access error.
  */
-export function openGoogleDrivePicker({ apiKey, onFilePicked, onError }) {
+export function openGoogleDrivePickerWithToken({ apiKey, oauthToken, onFilePicked, onError }) {
   if (typeof window === 'undefined') return;
 
   const keyToUse = apiKey || getStoredDriveApiKey();
@@ -130,20 +131,25 @@ export function openGoogleDrivePicker({ apiKey, onFilePicked, onError }) {
 
         const builder = new window.google.picker.PickerBuilder()
           .addView(view)
-          .setDeveloperKey(keyToUse)
-          .setCallback((data) => {
-            if (data.action === window.google.picker.Action.PICKED) {
-              const doc = data.docs[0];
-              if (doc) {
-                onFilePicked({
-                  id: doc.id,
-                  name: doc.name,
-                  url: doc.url || `https://drive.google.com/file/d/${doc.id}/view`,
-                  iconUrl: doc.iconUrl
-                });
-              }
+          .setDeveloperKey(keyToUse);
+
+        if (oauthToken) {
+          builder.setOAuthToken(oauthToken);
+        }
+
+        builder.setCallback((data) => {
+          if (data.action === window.google.picker.Action.PICKED) {
+            const doc = data.docs[0];
+            if (doc) {
+              onFilePicked({
+                id: doc.id,
+                name: doc.name,
+                url: doc.url || `https://drive.google.com/file/d/${doc.id}/view`,
+                iconUrl: doc.iconUrl
+              });
             }
-          });
+          }
+        });
 
         const picker = builder.build();
         picker.setVisible(true);
@@ -153,6 +159,45 @@ export function openGoogleDrivePicker({ apiKey, onFilePicked, onError }) {
       }
     }
   });
+}
+
+/**
+ * Requests OAuth Token and launches the Native Google Drive Picker.
+ */
+export function requestGoogleDriveTokenAndPicker({ apiKey, clientId = DEFAULT_CLIENT_ID, onFilePicked, onError }) {
+  const keyToUse = apiKey || getStoredDriveApiKey();
+  if (!keyToUse) {
+    if (onError) onError('Por favor insira sua API Key do Google Drive.');
+    return;
+  }
+
+  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.readonly',
+      callback: (response) => {
+        if (response.error) {
+          console.error('Erro na autorização do Google Drive:', response);
+          if (onError) onError('Autorização negada pelo Google: ' + response.error);
+          return;
+        }
+        openGoogleDrivePickerWithToken({
+          apiKey: keyToUse,
+          oauthToken: response.access_token,
+          onFilePicked,
+          onError
+        });
+      }
+    });
+    tokenClient.requestAccessToken({ prompt: '' });
+  } else {
+    openGoogleDrivePickerWithToken({
+      apiKey: keyToUse,
+      oauthToken: '',
+      onFilePicked,
+      onError
+    });
+  }
 }
 
 /**
