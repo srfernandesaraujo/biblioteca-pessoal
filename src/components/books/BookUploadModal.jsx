@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Upload, BookOpen, CheckCircle2, Loader2, Sparkles, Plus, Cloud } from 'lucide-react';
+import { X, Upload, BookOpen, CheckCircle2, Loader2, Sparkles, Plus, Cloud, ExternalLink, HelpCircle } from 'lucide-react';
 import { processPdfFile } from '../../services/pdfService';
-import { extractDriveFileId, fetchDriveFileBlob, openGoogleDrivePicker, getDriveThumbnailUrl } from '../../services/googleDriveService';
+import { extractDriveFileId, fetchDriveFileBlob, openGoogleDriveWeb, getDriveThumbnailUrl } from '../../services/googleDriveService';
 import { db } from '../../db/database';
 
 export function BookUploadModal({
@@ -54,7 +54,7 @@ export function BookUploadModal({
     try {
       // Extract 1st page cover canvas & total pages
       const result = await processPdfFile(blobFile);
-      setCoverImage(result.thumbnail);
+      if (result.thumbnail) setCoverImage(result.thumbnail);
       setPageCount(result.pageCount);
 
     } catch (err) {
@@ -72,16 +72,17 @@ export function BookUploadModal({
   const handleFetchFromDrive = async () => {
     const extractedId = extractDriveFileId(driveUrlInput);
     if (!extractedId) {
-      alert('Por favor insira um link válido do Google Drive.');
+      alert('Por favor insira um link ou ID válido do Google Drive.');
       return;
     }
     setDriveFileId(extractedId);
+    setCoverImage(getDriveThumbnailUrl(extractedId));
     setIsExtracting(true);
 
     try {
       const blob = await fetchDriveFileBlob(extractedId);
       const namedFile = new File([blob], `google_drive_book_${extractedId}.pdf`, { type: blob.type || 'application/pdf' });
-      await processBookFile(namedFile, `Livro Google Drive (${extractedId.slice(0, 6)})`, extractedId);
+      await processBookFile(namedFile, `Livro Google Drive`, extractedId);
     } catch (err) {
       alert(err.message);
       setIsExtracting(false);
@@ -105,12 +106,15 @@ export function BookUploadModal({
       return;
     }
 
+    const cleanDriveId = driveFileId || extractDriveFileId(driveUrlInput);
+    const finalCover = coverImage || (cleanDriveId ? getDriveThumbnailUrl(cleanDriveId) : '');
+
     const newBook = {
       title: title.trim(),
       author: author.trim() || 'Autor Desconhecido',
       genreId: genreId ? parseInt(genreId) : null,
       description: description.trim(),
-      coverImage,
+      coverImage: finalCover,
       pageCount,
       lastReadPage: 1,
       readStatus,
@@ -120,9 +124,9 @@ export function BookUploadModal({
       fileBlob: file,
       fileType: file ? file.type : 'application/pdf',
       fileSize: file ? file.size : 0,
-      driveFileId: driveFileId || extractDriveFileId(driveUrlInput),
+      driveFileId: cleanDriveId,
       driveLink: driveUrlInput.trim(),
-      source: driveFileId ? 'google_drive' : 'local'
+      source: cleanDriveId ? 'google_drive' : 'local'
     };
 
     await db.books.add(newBook);
@@ -199,45 +203,35 @@ export function BookUploadModal({
             </div>
           )}
 
-          {/* Source 2: Google Drive Shareable Link & Native Picker */}
+          {/* Source 2: Google Drive Shareable Link & Direct Action */}
           {uploadSource === 'drive' && (
             <div className="space-y-3 bg-blue-50/80 p-4 rounded-xl border border-blue-100">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-blue-950 uppercase tracking-wider">
-                  Livro no Google Drive
+                <label className="block text-xs font-bold text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <Cloud className="w-4 h-4 text-blue-600" /> Link do Livro no Google Drive
                 </label>
                 <button
                   type="button"
-                  onClick={() => {
-                    openGoogleDrivePicker(async (pickedFile) => {
-                      setDriveUrlInput(pickedFile.url);
-                      setDriveFileId(pickedFile.id);
-                      setTitle(pickedFile.name.replace(/\.[^/.]+$/, ""));
-                      const thumb = getDriveThumbnailUrl(pickedFile.id);
-                      if (thumb) setCoverImage(thumb);
-
-                      setIsExtracting(true);
-                      try {
-                        const blob = await fetchDriveFileBlob(pickedFile.id);
-                        const namedFile = new File([blob], pickedFile.name, { type: blob.type || 'application/pdf' });
-                        await processBookFile(namedFile, pickedFile.name, pickedFile.id);
-                      } catch (err) {
-                        alert(err.message);
-                        setIsExtracting(false);
-                      }
-                    });
-                  }}
+                  onClick={openGoogleDriveWeb}
                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center gap-1.5"
                 >
-                  <Cloud className="w-3.5 h-3.5" />
-                  <span>Navegar no Meu Google Drive ☁️</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Meu Google Drive ↗</span>
                 </button>
               </div>
 
-              <p className="text-xs text-blue-800">
-                Escolha o livro no seu Google Drive acima ou cole o link compartilhável abaixo:
-              </p>
-              
+              <div className="bg-white p-3 rounded-lg border border-blue-200 space-y-2">
+                <p className="text-xs text-slate-700 font-semibold flex items-center gap-1">
+                  <HelpCircle className="w-4 h-4 text-blue-500" />
+                  Passo a passo rápido:
+                </p>
+                <ol className="text-[11px] text-slate-600 space-y-1 list-decimal list-inside pl-1">
+                  <li>Clique no botão acima para abrir seu Google Drive.</li>
+                  <li>Clique com o botão direito no livro PDF ➔ <strong>Compartilhar</strong> ➔ <strong>Copiar Link</strong>.</li>
+                  <li>Cole o link no campo abaixo e clique em <strong>Carregar Capa</strong>.</li>
+                </ol>
+              </div>
+
               <div className="flex gap-2">
                 <input
                   type="url"
