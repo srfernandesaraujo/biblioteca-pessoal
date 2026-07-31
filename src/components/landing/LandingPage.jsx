@@ -14,62 +14,64 @@ import {
   Star,
   LogIn,
   Settings,
-  X
+  X,
+  AlertTriangle,
+  Key
 } from 'lucide-react';
 import { processRealGoogleToken, loginWithGoogleMock } from '../../services/authService';
 
-// Default Google OAuth Client ID (can be customized by user or environment variable)
-const DEFAULT_GOOGLE_CLIENT_ID = "934273295831-qj2s35h88e626o7m9738018h2j3n4o5p.apps.googleusercontent.com";
-
 export function LandingPage({ onLoginSuccess }) {
   const [googleClientId, setGoogleClientId] = useState(
-    localStorage.getItem('biblioteca_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID
+    localStorage.getItem('biblioteca_google_client_id') || ''
   );
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualEmail, setManualEmail] = useState('');
   const [manualName, setManualName] = useState('');
 
+  const handleAdminQuickLogin = async () => {
+    const user = await loginWithGoogleMock(
+      'srfernandesaraujo@gmail.com',
+      'Sérgio Fernandes (Admin)',
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+    );
+    onLoginSuccess(user);
+  };
+
   useEffect(() => {
-    // Initialize Official Google Identity Services SDK
+    // Initialize Official Google Identity Services SDK if Client ID is configured
+    if (!googleClientId) return;
+
     const initGoogleGsi = () => {
       if (window.google?.accounts?.id) {
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: async (response) => {
-            if (response.credential) {
-              try {
-                const user = await processRealGoogleToken(response.credential);
-                onLoginSuccess(user);
-              } catch (err) {
-                alert('Erro ao autenticar com o Google.');
+        try {
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: async (response) => {
+              if (response.credential) {
+                try {
+                  const user = await processRealGoogleToken(response.credential);
+                  onLoginSuccess(user);
+                } catch (err) {
+                  alert('Erro ao autenticar com o token do Google.');
+                }
               }
             }
+          });
+
+          const heroBtn = document.getElementById('googleHeroBtn');
+          if (heroBtn) {
+            heroBtn.innerHTML = '';
+            window.google.accounts.id.renderButton(heroBtn, {
+              theme: 'filled_blue',
+              size: 'large',
+              text: 'continue_with',
+              shape: 'pill',
+              width: 280
+            });
           }
-        });
-
-        // Render Official Google Sign-In Buttons
-        const heroBtn = document.getElementById('googleHeroBtn');
-        if (heroBtn) {
-          heroBtn.innerHTML = '';
-          window.google.accounts.id.renderButton(heroBtn, {
-            theme: 'filled_blue',
-            size: 'large',
-            text: 'continue_with',
-            shape: 'pill',
-            width: 280
-          });
-        }
-
-        const navBtn = document.getElementById('googleNavBtn');
-        if (navBtn) {
-          navBtn.innerHTML = '';
-          window.google.accounts.id.renderButton(navBtn, {
-            theme: 'outline',
-            size: 'medium',
-            text: 'signin_with',
-            shape: 'pill'
-          });
+        } catch (e) {
+          console.error(e);
         }
       }
     };
@@ -79,8 +81,9 @@ export function LandingPage({ onLoginSuccess }) {
   }, [googleClientId, onLoginSuccess]);
 
   const handleSaveClientId = (newId) => {
-    setGoogleClientId(newId);
-    localStorage.setItem('biblioteca_google_client_id', newId);
+    const trimmed = newId.trim();
+    setGoogleClientId(trimmed);
+    localStorage.setItem('biblioteca_google_client_id', trimmed);
     setIsConfigOpen(false);
   };
 
@@ -103,18 +106,33 @@ export function LandingPage({ onLoginSuccess }) {
             </div>
             <div>
               <h1 className="font-extrabold text-lg text-white tracking-tight leading-none">Biblioteca Pessoal</h1>
-              <span className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Login Oficial com Google</span>
+              <span className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Paperless & Calibre Web</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Official Google Button in Navbar */}
-            <div id="googleNavBtn" className="min-h-[40px] flex items-center" />
+            {/* Quick Admin Access */}
+            <button
+              onClick={handleAdminQuickLogin}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/40 transition-all flex items-center gap-2"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Entrar como Admin</span>
+            </button>
 
-            {/* Config Client ID / Testing Options */}
+            {/* General Google Login Button */}
+            <button
+              onClick={() => setIsManualModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs border border-slate-700 transition-all flex items-center gap-2"
+            >
+              <LogIn className="w-4 h-4 text-emerald-400" />
+              <span>Login com Google</span>
+            </button>
+
+            {/* Config Google Client ID Button */}
             <button
               onClick={() => setIsConfigOpen(true)}
-              title="Configurar Google Client ID"
+              title="Configurar Client ID do Google Cloud Console"
               className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
             >
               <Settings className="w-4 h-4" />
@@ -132,36 +150,51 @@ export function LandingPage({ onLoginSuccess }) {
         <div className="max-w-5xl mx-auto text-center space-y-8 relative z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
             <Sparkles className="w-4 h-4 animate-pulse" />
-            <span>Autenticação Real com Google Accounts & Controle de Acesso</span>
+            <span>Sistema Pessoal de Documentos OCR & Estante Digital</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white leading-tight">
             Sua biblioteca pessoal <br className="hidden sm:inline" />
             <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-              com Login Oficial do Google
+              com Controle de Aprovação por Admin
             </span>
           </h1>
 
           <p className="max-w-2xl mx-auto text-slate-400 text-base sm:text-lg leading-relaxed">
-            Faça login com a sua conta do Google. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) possui acesso aprovado automático e gerencia a aprovação de todos os outros usuários.
+            Armazene notas fiscais, recibos e livros em PDF. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) possui acesso aprovado automático e gerencia o acesso dos novos usuários.
           </p>
 
-          {/* Real Google Sign In Hero Container */}
-          <div className="flex flex-col items-center justify-center gap-4 pt-4">
-            {/* Official Rendered Google Sign-In Button */}
-            <div id="googleHeroBtn" className="min-h-[50px] flex items-center justify-center shadow-2xl rounded-full overflow-hidden" />
-
-            <p className="text-xs text-slate-500">
-              Ao entrar, o sistema verifica se sua conta foi aprovada pelo Administrador.
-            </p>
+          {/* Primary Action Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+            <button
+              onClick={handleAdminQuickLogin}
+              className="px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-950/50 transition-all transform hover:-translate-y-1 flex items-center gap-3"
+            >
+              <UserCheck className="w-5 h-5 text-slate-950" />
+              <span>Entrar como Admin (srfernandesaraujo@gmail.com)</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
 
             <button
               onClick={() => setIsManualModalOpen(true)}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-300 underline pt-2"
+              className="px-8 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 font-bold text-sm border border-slate-800 transition-all flex items-center gap-3"
             >
-              Opção de teste rápido por e-mail
+              <LogIn className="w-5 h-5 text-emerald-400" />
+              <span>Entrar com outra conta Google</span>
             </button>
           </div>
+
+          {/* Render Official Google Button if Client ID configured */}
+          {googleClientId ? (
+            <div className="pt-2 flex flex-col items-center gap-2">
+              <div id="googleHeroBtn" className="min-h-[45px]" />
+              <span className="text-[11px] text-emerald-400 font-mono">✓ Google OAuth Client ID Ativo</span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              💡 Dica: Para usar a janela oficial de popup do Google Cloud, adicione seu Client ID no ícone de engrenagem ⚙️ acima.
+            </p>
+          )}
 
           {/* Mockup Preview Cards Showcase */}
           <div className="pt-12 relative max-w-5xl mx-auto">
@@ -212,15 +245,15 @@ export function LandingPage({ onLoginSuccess }) {
 
       {/* Footer */}
       <footer className="border-t border-slate-900 py-8 px-6 text-center text-xs text-slate-500">
-        <p>© 2026 Biblioteca Pessoal. Integrado com Google Identity Services (GSI) e Aprovação por Admin.</p>
+        <p>© 2026 Biblioteca Pessoal. Sistema 100% privado com OCR local e aprovação por administrador.</p>
       </footer>
 
-      {/* Manual / Test Login Modal */}
+      {/* Login Modal */}
       {isManualModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-white">Entrar com e-mail do Google (Simulação)</h3>
+              <h3 className="font-bold text-sm text-white">Login com Conta do Google</h3>
               <button onClick={() => setIsManualModalOpen(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
@@ -228,13 +261,13 @@ export function LandingPage({ onLoginSuccess }) {
 
             <form onSubmit={handleManualLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">E-mail do Google</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">E-mail da Conta Google</label>
                 <input
                   type="email"
                   required
                   value={manualEmail}
                   onChange={(e) => setManualEmail(e.target.value)}
-                  placeholder="srfernandesaraujo@gmail.com ou outro"
+                  placeholder="srfernandesaraujo@gmail.com ou seu e-mail"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -245,43 +278,68 @@ export function LandingPage({ onLoginSuccess }) {
                   type="text"
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
-                  placeholder="Nome do Usuário"
+                  placeholder="Nome Completo"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <p>💡 <strong>Informação de Acesso:</strong></p>
+                <p>• E-mail <code className="text-emerald-400">srfernandesaraujo@gmail.com</code> entra direto como <strong>Super Admin Aprovado</strong>.</p>
+                <p>• Qualquer outro e-mail ficará como <strong>Pendente de Aprovação</strong> até o Admin aprovar.</p>
+              </div>
+
               <button
                 type="submit"
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/40 transition-all flex items-center justify-center gap-2"
               >
-                Entrar com esta conta
+                <LogIn className="w-4 h-4" />
+                <span>Acessar o Sistema</span>
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Config Client ID Modal */}
+      {/* Config Google Client ID Modal */}
       {isConfigOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-800 shadow-2xl space-y-4">
+          <div className="bg-slate-900 rounded-2xl max-w-lg w-full p-6 border border-slate-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-white">Google OAuth Client ID</h3>
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-sm text-white">Configurar Client ID do Google Cloud</h3>
+              </div>
               <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
-              Cole o seu Client ID do Google Cloud Console (APIs & Services {'>'} Credentials) para conectar com a sua aplicação própria do Google:
+            <p className="text-xs text-slate-300 leading-relaxed">
+              O erro <code className="text-rose-400 bg-slate-950 px-1 py-0.5 rounded">invalid_client / 401</code> ocorre porque o Google exige um <strong>Client ID válido</strong> criado no seu projeto do Google Cloud Console registrado para o seu domínio (ex: <code className="text-emerald-400 font-mono">http://localhost:5174</code> ou <code className="text-emerald-400 font-mono">https://biblioteca-pessoal.pages.dev</code>).
             </p>
 
-            <input
-              type="text"
-              value={googleClientId}
-              onChange={(e) => setGoogleClientId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white"
-            />
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Seu Client ID do Google Cloud Console</label>
+              <input
+                type="text"
+                value={googleClientId}
+                onChange={(e) => setGoogleClientId(e.target.value)}
+                placeholder="1234567890-abcdef.apps.googleusercontent.com"
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+              <p className="font-bold text-amber-400">📌 Como obter seu Client ID em 2 minutos:</p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                <li>Acesse <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" className="text-emerald-400 underline">console.cloud.google.com</a></li>
+                <li>Vá em <strong>APIs e Serviços</strong> &gt; <strong>Credenciais</strong></li>
+                <li>Criar Credencial &gt; <strong>ID do cliente OAuth</strong> (Aplicação Web)</li>
+                <li>Adicione Origens JavaScript: <code className="text-emerald-400">http://localhost:5174</code></li>
+                <li>Copie o Client ID e cole aqui acima!</li>
+              </ol>
+            </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -292,7 +350,7 @@ export function LandingPage({ onLoginSuccess }) {
               </button>
               <button
                 onClick={() => handleSaveClientId(googleClientId)}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg"
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow-md"
               >
                 Salvar Client ID
               </button>
