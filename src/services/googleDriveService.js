@@ -203,15 +203,29 @@ export function requestGoogleDriveTokenAndPicker({ apiKey, clientId = DEFAULT_CL
 /**
  * Fetches a Google Drive PDF file as Blob for OCR processing.
  * @param {string} fileId 
- * @returns {Promise<Blob>}
+ * @returns {Promise<Blob|null>}
  */
 export async function fetchDriveFileBlob(fileId) {
   const cleanId = extractDriveFileId(fileId);
-  if (!cleanId) {
-    throw new Error('ID ou Link do Google Drive inválido.');
+  if (!cleanId) return null;
+
+  const apiKey = getStoredDriveApiKey();
+
+  // Strategy 1: Google Drive REST API v3 with API Key
+  if (apiKey) {
+    try {
+      const apiUrl = `https://www.googleapis.com/drive/v3/files/${cleanId}?alt=media&key=${apiKey}`;
+      const apiRes = await fetch(apiUrl);
+      if (apiRes.ok) {
+        const blob = await apiRes.blob();
+        if (blob.size > 100) return blob;
+      }
+    } catch (e) {
+      console.warn('REST API fetch failed, trying direct URL...', e);
+    }
   }
 
-  // Primary: Direct Google Drive UC download
+  // Strategy 2: Direct Google Drive UC download
   const directUrl = getDriveDirectDownloadUrl(cleanId);
   try {
     const res = await fetch(directUrl);
@@ -223,12 +237,17 @@ export async function fetchDriveFileBlob(fileId) {
     console.warn('Direct Google Drive fetch failed, trying proxy...', e);
   }
 
-  // Secondary: CORS proxy for public Google Drive files
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
-  const proxyRes = await fetch(proxyUrl);
-  if (!proxyRes.ok) {
-    throw new Error('Não foi possível baixar o arquivo do Google Drive. Certifique-se de que o compartilhamento do arquivo está como "Qualquer pessoa com o link".');
+  // Strategy 3: CORS proxy for public Google Drive files
+  try {
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
+    const proxyRes = await fetch(proxyUrl);
+    if (proxyRes.ok) {
+      const blob = await proxyRes.blob();
+      if (blob.size > 100) return blob;
+    }
+  } catch (e) {
+    console.warn('Proxy fetch failed...', e);
   }
 
-  return await proxyRes.blob();
+  return null;
 }

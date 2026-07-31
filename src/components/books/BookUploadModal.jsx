@@ -122,10 +122,17 @@ export function BookUploadModal({
 
     try {
       const blob = await fetchDriveFileBlob(extractedId);
-      const namedFile = new File([blob], `google_drive_book_${extractedId}.pdf`, { type: blob.type || 'application/pdf' });
-      await processBookFile(namedFile, `Livro Google Drive`, extractedId);
+      if (blob) {
+        const namedFile = new File([blob], `google_drive_book_${extractedId}.pdf`, { type: blob.type || 'application/pdf' });
+        await processBookFile(namedFile, `Livro Google Drive`, extractedId);
+      } else {
+        if (!title) {
+          setTitle(`Livro Google Drive (${extractedId.slice(0, 6)})`);
+        }
+      }
     } catch (err) {
-      alert(err.message);
+      console.warn('Cover fetch error:', err);
+    } finally {
       setIsExtracting(false);
     }
   };

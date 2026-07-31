@@ -162,14 +162,23 @@ export function DocumentUploadModal({
     setDriveFileId(extractedId);
     setThumbnail(getDriveThumbnailUrl(extractedId));
     setIsProcessingOcr(true);
-    setOcrStatusText('Baixando arquivo do Google Drive e executando OCR...');
+    setOcrStatusText('Conectando ao Google Drive e verificando OCR...');
 
     try {
       const blob = await fetchDriveFileBlob(extractedId);
-      const namedFile = new File([blob], `google_drive_${extractedId}.pdf`, { type: blob.type || 'application/pdf' });
-      await processBlobFile(namedFile, `Documento Google Drive`, extractedId);
+      if (blob) {
+        const namedFile = new File([blob], `google_drive_${extractedId}.pdf`, { type: blob.type || 'application/pdf' });
+        await processBlobFile(namedFile, `Documento Google Drive`, extractedId);
+      } else {
+        // Blob fetch blocked by CORS or private permissions: save link cleanly
+        if (!title) {
+          setTitle(`Documento Google Drive (${extractedId.slice(0, 6)})`);
+        }
+        setOcrStatusText('✓ Link do Google Drive conectado! Digite o título e clique em Salvar.');
+      }
     } catch (err) {
-      alert(err.message);
+      console.warn('OCR fetch error:', err);
+    } finally {
       setIsProcessingOcr(false);
     }
   };
