@@ -16,7 +16,8 @@ import {
   Settings,
   X,
   AlertTriangle,
-  Key
+  Key,
+  HelpCircle
 } from 'lucide-react';
 import { processRealGoogleToken, loginWithGoogleMock } from '../../services/authService';
 
@@ -39,7 +40,6 @@ export function LandingPage({ onLoginSuccess }) {
   };
 
   useEffect(() => {
-    // Initialize Official Google Identity Services SDK if Client ID is configured
     if (!googleClientId) return;
 
     const initGoogleGsi = () => {
@@ -95,6 +95,14 @@ export function LandingPage({ onLoginSuccess }) {
     onLoginSuccess(user);
   };
 
+  const handleTriggerGooglePopup = () => {
+    if (window.google?.accounts?.id && googleClientId) {
+      window.google.accounts.id.prompt();
+    } else {
+      setIsManualModalOpen(true);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-white overflow-x-hidden">
       {/* Navbar */}
@@ -122,7 +130,7 @@ export function LandingPage({ onLoginSuccess }) {
 
             {/* General Google Login Button */}
             <button
-              onClick={() => setIsManualModalOpen(true)}
+              onClick={handleTriggerGooglePopup}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs border border-slate-700 transition-all flex items-center gap-2"
             >
               <LogIn className="w-4 h-4 text-emerald-400" />
@@ -132,10 +140,11 @@ export function LandingPage({ onLoginSuccess }) {
             {/* Config Google Client ID Button */}
             <button
               onClick={() => setIsConfigOpen(true)}
-              title="Configurar Client ID do Google Cloud Console"
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+              title="Configurações do Google Cloud"
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors flex items-center gap-1.5"
             >
               <Settings className="w-4 h-4" />
+              <span className="text-xs font-semibold hidden sm:inline">Google Cloud</span>
             </button>
           </div>
         </div>
@@ -150,18 +159,18 @@ export function LandingPage({ onLoginSuccess }) {
         <div className="max-w-5xl mx-auto text-center space-y-8 relative z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
             <Sparkles className="w-4 h-4 animate-pulse" />
-            <span>Sistema Pessoal de Documentos OCR & Estante Digital</span>
+            <span>Sistema Pessoal com Autenticação Google & Aprovação por Admin</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white leading-tight">
             Sua biblioteca pessoal <br className="hidden sm:inline" />
             <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-              com Controle de Aprovação por Admin
+              com Login Google & Aprovação
             </span>
           </h1>
 
           <p className="max-w-2xl mx-auto text-slate-400 text-base sm:text-lg leading-relaxed">
-            Armazene notas fiscais, recibos e livros em PDF. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) possui acesso aprovado automático e gerencia o acesso dos novos usuários.
+            Armazene notas fiscais, recibos e livros em PDF. O administrador master (<code className="text-emerald-400 font-mono">srfernandesaraujo@gmail.com</code>) possui acesso aprovado automático e gerencia novos usuários.
           </p>
 
           {/* Primary Action Buttons */}
@@ -185,15 +194,11 @@ export function LandingPage({ onLoginSuccess }) {
           </div>
 
           {/* Render Official Google Button if Client ID configured */}
-          {googleClientId ? (
-            <div className="pt-2 flex flex-col items-center gap-2">
+          {googleClientId && (
+            <div className="pt-4 flex flex-col items-center gap-2">
               <div id="googleHeroBtn" className="min-h-[45px]" />
               <span className="text-[11px] text-emerald-400 font-mono">✓ Google OAuth Client ID Ativo</span>
             </div>
-          ) : (
-            <p className="text-xs text-slate-500">
-              💡 Dica: Para usar a janela oficial de popup do Google Cloud, adicione seu Client ID no ícone de engrenagem ⚙️ acima.
-            </p>
           )}
 
           {/* Mockup Preview Cards Showcase */}
@@ -284,7 +289,7 @@ export function LandingPage({ onLoginSuccess }) {
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <p>💡 <strong>Informação de Acesso:</strong></p>
+                <p>💡 <strong>Regra de Acesso:</strong></p>
                 <p>• E-mail <code className="text-emerald-400">srfernandesaraujo@gmail.com</code> entra direto como <strong>Super Admin Aprovado</strong>.</p>
                 <p>• Qualquer outro e-mail ficará como <strong>Pendente de Aprovação</strong> até o Admin aprovar.</p>
               </div>
@@ -308,19 +313,30 @@ export function LandingPage({ onLoginSuccess }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Key className="w-5 h-5 text-amber-400" />
-                <h3 className="font-bold text-sm text-white">Configurar Client ID do Google Cloud</h3>
+                <h3 className="font-bold text-sm text-white">Solução para o erro origin_mismatch</h3>
               </div>
               <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              O erro <code className="text-rose-400 bg-slate-950 px-1 py-0.5 rounded">invalid_client / 401</code> ocorre porque o Google exige um <strong>Client ID válido</strong> criado no seu projeto do Google Cloud Console registrado para o seu domínio (ex: <code className="text-emerald-400 font-mono">http://localhost:5174</code> ou <code className="text-emerald-400 font-mono">https://biblioteca-pessoal.pages.dev</code>).
-            </p>
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
+              <p className="font-bold text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Por que o erro origin_mismatch acontece no Google?
+              </p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                O Google exige que a URL exata do seu navegador esteja listada em <strong>Origens JavaScript autorizadas</strong> no Google Cloud.
+              </p>
+              <div className="bg-slate-900 p-2.5 rounded border border-slate-800 text-[11px] font-mono text-emerald-400 space-y-1">
+                <p>1. http://localhost:5174</p>
+                <p>2. http://127.0.0.1:5174</p>
+                <p>3. https://biblioteca-pessoal.pages.dev</p>
+              </div>
+            </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Seu Client ID do Google Cloud Console</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Seu Google Client ID</label>
               <input
                 type="text"
                 value={googleClientId}
@@ -330,23 +346,12 @@ export function LandingPage({ onLoginSuccess }) {
               />
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-              <p className="font-bold text-amber-400">📌 Como obter seu Client ID em 2 minutos:</p>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Acesse <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" className="text-emerald-400 underline">console.cloud.google.com</a></li>
-                <li>Vá em <strong>APIs e Serviços</strong> &gt; <strong>Credenciais</strong></li>
-                <li>Criar Credencial &gt; <strong>ID do cliente OAuth</strong> (Aplicação Web)</li>
-                <li>Adicione Origens JavaScript: <code className="text-emerald-400">http://localhost:5174</code></li>
-                <li>Copie o Client ID e cole aqui acima!</li>
-              </ol>
-            </div>
-
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setIsConfigOpen(false)}
                 className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
               >
-                Cancelar
+                Fechar
               </button>
               <button
                 onClick={() => handleSaveClientId(googleClientId)}
