@@ -14,6 +14,40 @@ import {
   MessageSquare
 } from 'lucide-react';
 
+// Helper to remove accents and normalize text
+function normalize(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// Helper to extract financial values from text (handles R$, VALOR:, and currency numbers)
+function extractValuesFromText(text) {
+  if (!text) return [];
+  const values = [];
+
+  // Match patterns like "VALOR:\s*9.600,00", "R$\s*9.600,00", "VALOR R$ 9.600,00", or standalone "9.600,00"
+  const patterns = [
+    /(?:VALOR|TOTAL|PAGO|QUANTIA)\s*:?\s*(?:R\$\s*)?([\d\.]+\,\d{2})/gi,
+    /R\$\s*([\d\.]+\,\d{2})/gi,
+    /([\d\.]{2,}\,\d{2})/g
+  ];
+
+  patterns.forEach(regex => {
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match[1]) {
+        const rawNum = match[1].replace(/\./g, '').replace(',', '.');
+        const num = parseFloat(rawNum);
+        if (!isNaN(num) && num > 0 && num < 10000000) {
+          values.push({ formatted: `R$ ${match[1]}`, number: num });
+        }
+      }
+    }
+  });
+
+  return values;
+}
+
 export function AiChatAssistant({
   documents = [],
   books = [],
@@ -44,145 +78,141 @@ export function AiChatAssistant({
 
   // Preset suggested prompts
   const quickPrompts = [
-    { label: '💰 Total gasto em notas fiscais', prompt: 'Qual o valor total acumulado das minhas notas fiscais e recibos?' },
+    { label: '👨‍💼 Valor pago ao corretor André', prompt: 'Qual valor pago ao corretor André?' },
+    { label: '💰 Total gasto em notas e recibos', prompt: 'Qual o valor total acumulado das minhas faturas e recibos?' },
     { label: '📄 Resumo de Contratos', prompt: 'Liste os contratos cadastrados no sistema e seus detalhes.' },
-    { label: '📖 Livros em leitura', prompt: 'Quais livros estou lendo e qual meu progresso de leitura?' },
-    { label: '🏥 Documentos de Saúde', prompt: 'Exiba meus exames e documentos da categoria Saúde.' }
+    { label: '📖 Livros em leitura', prompt: 'Quais livros estou lendo e qual meu progresso de leitura?' }
   ];
 
-  // AI Knowledge Search & Response Generator
-  const generateAiResponse = (query) => {
-    const q = query.toLowerCase();
+  // Advanced Local RAG Search & Response Generator
+  const generateAiResponse = (userQuery) => {
+    const normQuery = normalize(userQuery);
     
-    // 1. Query about financial total / invoices
-    if (q.includes('gastos') || q.includes('valor') || q.includes('fatura') || q.includes('nota') || q.includes('recibo') || q.includes('dinheiro') || q.includes('total')) {
-      let totalValue = 0;
-      const nfDocs = [];
+    // Stopwords to filter out when searching for specific names or terms
+    const stopwords = ['qual', 'quais', 'valor', 'pago', 'pagou', 'quanto', 'custou', 'gasto', 'foi', 'para', 'como', 'onde', 'qual', 'este', 'esta', 'meu', 'minha', 'sobre', 'que', 'dos', 'das', 'com'];
+    const queryTokens = normQuery.split(/\s+/).filter(token => token.length > 2 && !stopwords.includes(token));
+
+    // 1. Search across Documents (OCR text, title, filename)
+    const matchingDocs = documents.filter(doc => {
+      const normTitle = normalize(doc.title);
+      const normFile = normalize(doc.fileName);
+      const normOcr = normalize(doc.ocrText);
+
+      // Check token matches
+      return queryTokens.some(token => 
+        normTitle.includes(token) || normFile.includes(token) || normOcr.includes(token)
+      );
+    });
+
+    // 2. Search across Books
+    const matchingBooks = books.filter(book => {
+      const normTitle = normalize(book.title);
+      const normAuthor = normalize(book.author);
+      return queryTokens.some(token => normTitle.includes(token) || normAuthor.includes(token));
+    });
+
+    // If specific document matches were found!
+    if (matchingDocs.length > 0) {
+      let text = `Encontrei **${matchingDocs.length} documento(s)** relevante(s) para sua pergunta:\n\n`;
+
+      matchingDocs.forEach((doc, idx) => {
+        text += `📄 **${idx + 1}. ${doc.title || doc.fileName}**\n`;
+
+        // Extract values from OCR text
+        const vals = extractValuesFromText(doc.ocrText);
+        if (vals.length > 0) {
+          text += `• **Valor identificado**: ${vals[0].formatted}\n`;
+        }
+
+        // Snippet extraction around query token
+        if (doc.ocrText) {
+          const lines = doc.ocrText.split('\n');
+          const relevantLines = lines.filter(line => {
+            const normLine = normalize(line);
+            return queryTokens.some(token => normLine.includes(token));
+          }).slice(0, 4);
+
+          if (relevantLines.length > 0) {
+            text += `• **Trecho extraído do OCR**:\n`;
+            relevantLines.forEach(l => {
+              text += `> "${l.trim()}"\n`;
+            });
+          }
+        }
+        text += `\n`;
+      });
+
+      return { text, relevantDocs: matchingDocs };
+    }
+
+    // Special handler for global financial total (if query is purely about total money spent)
+    if (normQuery.includes('total') || normQuery.includes('acumulado') || normQuery.includes('soma')) {
+      let totalSum = 0;
+      const docList = [];
 
       documents.forEach(doc => {
-        if (doc.ocrText) {
-          const match = doc.ocrText.match(/(?:R\$\s*|Total\s*:?\s*R\$\s*|VALOR\s*:?\s*R\$\s*)([\d\.\,]+)/i);
-          if (match && match[1]) {
-            const rawNum = match[1].replace(/\./g, '').replace(',', '.');
-            const val = parseFloat(rawNum);
-            if (!isNaN(val) && val < 1000000) {
-              totalValue += val;
-              nfDocs.push({ doc, val });
-            }
-          }
+        const vals = extractValuesFromText(doc.ocrText);
+        if (vals.length > 0) {
+          totalSum += vals[0].number;
+          docList.push({ doc, val: vals[0].formatted });
         }
       });
 
-      const formattedTotal = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      
-      let text = `Com base na leitura OCR dos seus documentos, o valor total extraído das suas faturas e recibos é **${formattedTotal}**.\n\n`;
-      if (nfDocs.length > 0) {
-        text += `**Documentos identificados com valores:**\n`;
-        nfDocs.slice(0, 5).forEach(({ doc, val }) => {
-          text += `• **${doc.title}**: ${val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
+      const formattedTotal = totalSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      let text = `Com base na leitura de OCR dos seus documentos, o valor total extraído é **${formattedTotal}**.\n\n`;
+      if (docList.length > 0) {
+        text += `**Documentos com valores:**\n`;
+        docList.forEach(({ doc, val }) => {
+          text += `• **${doc.title}**: ${val}\n`;
         });
       } else {
-        text += `Você tem **${documents.length} documentos** cadastrados no sistema.`;
+        text += `Não identifiquei valores numéricos explícitos nos **${documents.length} documentos** cadastrados.`;
       }
 
-      return { text, relevantDocs: nfDocs.map(n => n.doc) };
+      return { text, relevantDocs: docList.map(d => d.doc) };
     }
 
-    // 2. Query about Contracts
-    if (q.includes('contrato') || q.includes('contratos') || q.includes('acordo')) {
-      const contractCategory = categories.find(c => c.name.toLowerCase().includes('contrato'));
+    // Special handler for Contracts
+    if (normQuery.includes('contrato')) {
+      const contractCategory = categories.find(c => normalize(c.name).includes('contrato'));
       const contractDocs = documents.filter(d => 
         (contractCategory && d.categoryId === contractCategory.id) || 
-        d.title?.toLowerCase().includes('contrato') || 
-        d.ocrText?.toLowerCase().includes('contrato')
+        normalize(d.title).includes('contrato') || 
+        normalize(d.ocrText).includes('contrato')
       );
 
-      if (contractDocs.length === 0) {
-        return { text: `Não encontrei contratos cadastrados no momento. Você possui **${documents.length} documentos totais** na biblioteca.` };
+      if (contractDocs.length > 0) {
+        let text = `Encontrei **${contractDocs.length} contrato(s)** na sua biblioteca:\n\n`;
+        contractDocs.forEach(d => {
+          text += `• **${d.title}** (${d.createdDate || d.addedDate ? new Date(d.createdDate || d.addedDate).toLocaleDateString('pt-BR') : 'Sem data'})\n`;
+        });
+        return { text, relevantDocs: contractDocs };
       }
-
-      let text = `Encontrei **${contractDocs.length} contrato(s)** na sua biblioteca:\n\n`;
-      contractDocs.forEach(d => {
-        text += `• **${d.title}** (${d.createdDate || d.addedDate ? new Date(d.createdDate || d.addedDate).toLocaleDateString('pt-BR') : 'Sem data'})\n`;
-      });
-      return { text, relevantDocs: contractDocs };
     }
 
-    // 3. Query about Books & Reading Progress
-    if (q.includes('livro') || q.includes('livros') || q.includes('lendo') || q.includes('estante') || q.includes('leitura') || q.includes('autor')) {
+    // Special handler for Books
+    if (normQuery.includes('livro') || normQuery.includes('estante') || normQuery.includes('lendo')) {
       const reading = books.filter(b => b.readStatus === 'reading');
-      const read = books.filter(b => b.readStatus === 'read');
-      const unread = books.filter(b => b.readStatus === 'unread');
-
-      let text = `Sua estante virtual possui **${books.length} obras** cadastrais:\n\n`;
-      text += `• 📖 **Lendo atualmente (${reading.length})**:\n`;
+      let text = `Sua estante virtual possui **${books.length} obras**.\n\n`;
       if (reading.length > 0) {
+        text += `📖 **Lendo atualmente (${reading.length})**:\n`;
         reading.forEach(b => {
           const prog = b.pageCount ? Math.round(((b.lastReadPage || 1) / b.pageCount) * 100) : 0;
-          text += `  - *${b.title}* de ${b.author || 'Autor desconhecido'} (Pág. ${b.lastReadPage || 1} de ${b.pageCount || '?'} • ${prog}%)\n`;
-        });
-      } else {
-        text += `  - Nenhum livro marcado como "Lendo".\n`;
-      }
-
-      text += `\n• ✅ **Concluídos**: ${read.length} livro(s)\n`;
-      text += `• 📌 **Não Lidos**: ${unread.length} livro(s)\n`;
-
-      return { text, relevantBooks: reading.length > 0 ? reading : books.slice(0, 3) };
-    }
-
-    // 4. Query about Health or specific categories
-    if (q.includes('saúde') || q.includes('exame') || q.includes('médico') || q.includes('laudo')) {
-      const saudeCategory = categories.find(c => c.name.toLowerCase().includes('saúde'));
-      const saudeDocs = documents.filter(d => 
-        (saudeCategory && d.categoryId === saudeCategory.id) || 
-        d.title?.toLowerCase().includes('exame') || 
-        d.ocrText?.toLowerCase().includes('exame') ||
-        d.ocrText?.toLowerCase().includes('paciente')
-      );
-
-      if (saudeDocs.length === 0) {
-        return { text: `Não encontrei documentos na categoria Saúde/Exames.` };
-      }
-
-      let text = `Encontrei **${saudeDocs.length} documento(s) de Saúde**:\n\n`;
-      saudeDocs.forEach(d => {
-        text += `• **${d.title}**\n`;
-      });
-      return { text, relevantDocs: saudeDocs };
-    }
-
-    // 5. Search specific query terms
-    const matchedDocs = documents.filter(d => 
-      d.title?.toLowerCase().includes(q) || 
-      d.ocrText?.toLowerCase().includes(q)
-    );
-
-    const matchedBooks = books.filter(b => 
-      b.title?.toLowerCase().includes(q) || 
-      b.author?.toLowerCase().includes(q)
-    );
-
-    if (matchedDocs.length > 0 || matchedBooks.length > 0) {
-      let text = `Analisei sua biblioteca para o termo **"${query}"**:\n\n`;
-      if (matchedDocs.length > 0) {
-        text += `📄 **Documentos encontrados (${matchedDocs.length}):**\n`;
-        matchedDocs.slice(0, 4).forEach(d => {
-          text += `• **${d.title}**\n`;
+          text += `• *${b.title}* de ${b.author || 'Autor desconhecido'} (Pág. ${b.lastReadPage || 1} de ${b.pageCount || '?'} • ${prog}%)\n`;
         });
       }
-      if (matchedBooks.length > 0) {
-        text += `\n📚 **Livros encontrados (${matchedBooks.length}):**\n`;
-        matchedBooks.slice(0, 4).forEach(b => {
-          text += `• **${b.title}** (${b.author})\n`;
-        });
-      }
-      return { text, relevantDocs: matchedDocs, relevantBooks: matchedBooks };
+      return { text, relevantBooks: books.slice(0, 5) };
     }
 
-    // Default Fallback Response
+    // General fallback search across all document text
+    if (documents.length > 0) {
+      let text = `Não encontrei referências exatas para **"${userQuery}"** nos seus documentos.\n\n`;
+      text += `Você tem **${documents.length} documento(s)** cadastrado(s). Verifique se o documento desejado foi escaneado com OCR e se o texto extraído contém o termo pesquisado.`;
+      return { text, relevantDocs: documents.slice(0, 3) };
+    }
+
     return {
-      text: `Entendi sua pergunta sobre **"${query}"**. Atualmente sua biblioteca conta com **${documents.length} documentos** com OCR indexado e **${books.length} livros** na estante.\n\nPosso ajudar você a buscar faturas, contratos, relatórios de saúde ou informações sobre o progresso dos seus livros!`
+      text: `Nenhum documento cadastrado no sistema ainda. Adicione um PDF ou imagem no módulo Documentos para que a IA possa ler e responder suas perguntas!`
     };
   };
 
@@ -214,7 +244,7 @@ export function AiChatAssistant({
       };
       setMessages(prev => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 700);
+    }, 600);
   };
 
   return (
@@ -232,7 +262,7 @@ export function AiChatAssistant({
                 <Sparkles className="w-3 h-3" /> IA Local RAG
               </span>
             </h2>
-            <p className="text-xs text-slate-400">Pergunte sobre seus documentos, recibos, faturas e livros em PDF</p>
+            <p className="text-xs text-slate-400">Busca semântica avançada em notas fiscais, recibos, contratos e livros PDF</p>
           </div>
         </div>
 
