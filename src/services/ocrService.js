@@ -81,17 +81,26 @@ export function extractSmartMetadataFromOcr(text) {
 
   let extractedDate = '';
 
-  // 1. Explicit Keywords: Data de Emissão, Data do Pagamento, Data: DD/MM/YYYY
-  const explicitDateRegex = /(?:Data\s*(?:de\s*emiss[ãa]o|do\s*pagamento|da\s*transfer[êe]ncia|do\s*comprovante)?|Emiss[ãa]o)\s*:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i;
-  const explicitMatch = text.match(explicitDateRegex);
+  // 1. Check Explicit Keyword Date Patterns (Order of priority)
+  const keywordPatterns = [
+    /(?:data\s*(?:de\s*emiss[ãa]o|da\s*emiss[ãa]o|do\s*pagamento|da\s*operac[ãa]o|da\s*transac[ãa]o|da\s*transfer[êe]ncia|do\s*comprovante|do\s*evento|de\s*vencimento)?|emiss[ãa]o|emitido\s*em|data\/hora|data)\s*:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+    /(?:comprovante\s*de\s*[\w\s]+\s*de)\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i
+  ];
 
-  if (explicitMatch && explicitMatch[1]) {
-    extractedDate = parseRawDateString(explicitMatch[1]);
+  for (const pattern of keywordPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const parsed = parseRawDateString(match[1]);
+      if (parsed) {
+        extractedDate = parsed;
+        break;
+      }
+    }
   }
 
-  // 2. Text Month Names: Ex "15 de maio de 2025" or "10/MAIO/2026"
+  // 2. Check Text Month Names (e.g. "15 de maio de 2025" or "10 de Março de 2024")
   if (!extractedDate) {
-    const monthNames = {
+    const monthMap = {
       jan: '01', janeiro: '01',
       fev: '02', fevereiro: '02',
       mar: '03', marco: '03', março: '03',
@@ -106,24 +115,33 @@ export function extractSmartMetadataFromOcr(text) {
       dez: '12', dezembro: '12'
     };
 
-    const writtenDateRegex = /(\d{1,2})\s+(?:de\s+)?([a-zç]+)\s+(?:de\s+)?(\d{4})/i;
-    const writtenMatch = text.match(writtenDateRegex);
-    if (writtenMatch) {
+    const writtenRegex = /(\d{1,2})\s+(?:de\s+)?([a-zç]+)\s+(?:de\s+)?(\d{4})/gi;
+    let writtenMatch;
+    while ((writtenMatch = writtenRegex.exec(text)) !== null) {
       const day = writtenMatch[1].padStart(2, '0');
-      const monthKey = writtenMatch[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const monthRaw = writtenMatch[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const year = writtenMatch[3];
-      if (monthNames[monthKey]) {
-        extractedDate = `${year}-${monthNames[monthKey]}-${day}`;
+      if (monthMap[monthRaw]) {
+        extractedDate = `${year}-${monthMap[monthRaw]}-${day}`;
+        break;
       }
     }
   }
 
-  // 3. Fallback: Any valid DD/MM/YYYY or YYYY-MM-DD in text
+  // 3. Fallback: Find all dates matching DD/MM/YYYY or YYYY-MM-DD in text
   if (!extractedDate) {
-    const generalDateRegex = /(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})|(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/;
-    const generalMatch = text.match(generalDateRegex);
-    if (generalMatch && generalMatch[0]) {
-      extractedDate = parseRawDateString(generalMatch[0]);
+    const allDatesRegex = /(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})|(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/g;
+    const matches = text.match(allDatesRegex) || [];
+    const validDates = matches.map(m => parseRawDateString(m)).filter(Boolean);
+
+    const todayYmd = new Date().toISOString().split('T')[0];
+    
+    // Prefer dates that are NOT today's date (if document has original date)
+    const historicalDates = validDates.filter(d => d !== todayYmd);
+    if (historicalDates.length > 0) {
+      extractedDate = historicalDates[0];
+    } else if (validDates.length > 0) {
+      extractedDate = validDates[0];
     }
   }
 
@@ -144,7 +162,7 @@ export function extractSmartMetadataFromOcr(text) {
 }
 
 /**
- * Helper to normalize raw date string to YYYY-MM-DD format for HTML date inputs.
+ * Helper to normalize raw date string (DD/MM/YYYY or YYYY/MM/DD) to YYYY-MM-DD for HTML date inputs.
  */
 function parseRawDateString(raw) {
   if (!raw) return '';
@@ -152,18 +170,31 @@ function parseRawDateString(raw) {
   const parts = clean.split('/');
   if (parts.length !== 3) return '';
 
+  let year = '';
+  let month = '';
+  let day = '';
+
   if (parts[0].length === 4) {
-    // YYYY/MM/DD
-    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    // Format YYYY/MM/DD
+    year = parts[0];
+    month = parts[1].padStart(2, '0');
+    day = parts[2].padStart(2, '0');
+  } else if (parts[2].length === 4) {
+    // Format DD/MM/YYYY
+    day = parts[0].padStart(2, '0');
+    month = parts[1].padStart(2, '0');
+    year = parts[2];
   } else {
-    // DD/MM/YYYY
-    const day = parts[0].padStart(2, '0');
-    const month = parts[1].padStart(2, '0');
-    const year = parts[2];
-    // Sanity check year
-    if (parseInt(year) > 1900 && parseInt(year) < 2100) {
-      return `${year}-${month}-${day}`;
-    }
+    return '';
   }
+
+  const yNum = parseInt(year, 10);
+  const mNum = parseInt(month, 10);
+  const dNum = parseInt(day, 10);
+
+  if (yNum >= 1900 && yNum <= 2100 && mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+    return `${year}-${month}-${day}`;
+  }
+
   return '';
 }
